@@ -28,3 +28,15 @@ end
     @test fnone.kr == 1.0
     @test fsnap.kr != 1.0 || isapprox(fsnap.kr, 1.0)  # may already be optimal
 end
+
+@testset "FFTLog forward with batched Bessel orders" begin
+    n = 32
+    μ_row = reshape([0.0, 1.0, 2.0], 1, :)
+    r = 10 .^ range(-2.0, 2.0; length = n)
+    dlog = infer_dlog(r)
+    f = FFTLog(BesselJKernel(μ_row); n = n, dlog = dlog, bias = 0.0, kr = 1.0, lowring = false)
+    fr = @. r^(0 + 1) * exp(-r^2 / 2)
+    ak = forward(f, fr)
+    @test size(ak) == (n, 3)
+    @test all(isfinite, ak)
+end

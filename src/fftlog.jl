@@ -152,6 +152,24 @@ end
 
 _bias_logc_arr(bias, kr, sign::Int) = exp.(sign .* bias .* log.(kr))
 
+# IRFFT along Fourier axis 1; column-wise when `A` has trailing batch dims (batched kernels).
+function _irfft_columns(A, f::FFTLog)
+    if A isa AbstractVector
+        return f.inv_plan * A
+    end
+    T = _real_eltype(f.coeffs)
+    sz = size(A)
+    nfreq = size(A, 1)
+    batch = sz[2:end]
+    ncol = prod(batch)
+    A2 = reshape(A, nfreq, ncol)
+    out2 = Matrix{T}(undef, f.n, ncol)
+    @inbounds for j in axes(A2, 2)
+        out2[:, j] = f.inv_plan * view(A2, :, j)
+    end
+    return reshape(out2, f.n, batch...)
+end
+
 # --- Forward / Inverse ------------------------------------------------------
 
 """
@@ -214,7 +232,7 @@ function _forward_impl(a, f::FFTLog)
     else
         A = A .* f.coeffs
     end
-    out = f.inv_plan * A
+    out = _irfft_columns(A, f)
     out_flipped = reverse(out; dims = 1)
     out_flipped .*= pl
     out_flipped .*= blogc
@@ -235,7 +253,7 @@ function _inverse_impl(ak, f::FFTLog)
     else
         A = A ./ conj.(f.coeffs)
     end
-    out = f.inv_plan * A
+    out = _irfft_columns(A, f)
     out_flipped = reverse(out; dims = 1)
     out_flipped .*= pl
     return out_flipped

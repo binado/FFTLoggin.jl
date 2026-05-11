@@ -12,15 +12,7 @@ Python package).
 For array-valued kernels, the sample/transform axis remains first and kernel
 batch axes are trailing.
 """
-struct FFTLog{
-    K<:AbstractKernel,
-    T<:AbstractFloat,
-    C<:Complex,
-    D,B,R,
-    CT,
-    P,
-    IP,
-}
+struct FFTLog{K <: AbstractKernel, T <: AbstractFloat, C <: Complex, D, B, R, CT, P, IP}
     kernel::K
     n::Int
     dlog::D
@@ -35,7 +27,7 @@ end
 
 function _compute_coeffs(kernel::AbstractKernel, n::Integer, kr, dlog, bias)
     ns = n ÷ 2 + 1
-    m = collect(0:ns-1)
+    m = collect(0:(ns - 1))
     angle = (2π * im / n) .* m ./ dlog
     s = angle .+ 1 .+ bias
     c = kernel(s)
@@ -74,12 +66,14 @@ end
 
 # --- Constructors -----------------------------------------------------------
 
-function FFTLog(kernel::AbstractKernel;
-    n::Integer,
-    dlog,
-    bias=0.0,
-    kr=1.0,
-    lowring::Bool=true)
+function FFTLog(
+        kernel::AbstractKernel;
+        n::Integer,
+        dlog,
+        bias = 0.0,
+        kr = 1.0,
+        lowring::Bool = true
+)
     n > 0 || throw(ArgumentError("n must be positive"))
     _warn_if_out_of_domain(kernel, bias)
 
@@ -95,17 +89,38 @@ function FFTLog(kernel::AbstractKernel;
     inv_plan = plan_irfft(csample, Int(n))
 
     C = Complex{T}
-    return FFTLog{typeof(kernel),T,C,
-        typeof(dlog),typeof(bias),typeof(kr_eff),
-        typeof(coeffs),typeof(fwd_plan),typeof(inv_plan)}(
-        kernel, Int(n), dlog, bias, kr_eff, coeffs, fwd_plan, inv_plan)
+    return FFTLog{
+        typeof(kernel),
+        T,
+        C,
+        typeof(dlog),
+        typeof(bias),
+        typeof(kr_eff),
+        typeof(coeffs),
+        typeof(fwd_plan),
+        typeof(inv_plan)
+    }(
+        kernel,
+        Int(n),
+        dlog,
+        bias,
+        kr_eff,
+        coeffs,
+        fwd_plan,
+        inv_plan
+    )
 end
 
-function FFTLog(kernel::AbstractKernel, r::AbstractVector;
-    bias=0.0, kr=1.0, lowring::Bool=true)
+function FFTLog(
+        kernel::AbstractKernel,
+        r::AbstractVector;
+        bias = 0.0,
+        kr = 1.0,
+        lowring::Bool = true
+)
     n = length(r)
     dlog = infer_dlog(r)
-    return FFTLog(kernel; n=n, dlog=dlog, bias=bias, kr=kr, lowring=lowring)
+    return FFTLog(kernel; n = n, dlog = dlog, bias = bias, kr = kr, lowring = lowring)
 end
 
 # Sugar
@@ -118,9 +133,15 @@ _real_eltype(x::AbstractArray) = (T = real(eltype(x)); T <: AbstractFloat ? T : 
 
 # --- Bias factors ----------------------------------------------------------
 
-function _bias_power_law(bias, dlog, n::Integer, sign::Int, ::Type{T}) where {T<:AbstractFloat}
+function _bias_power_law(
+        bias,
+        dlog,
+        n::Integer,
+        sign::Int,
+        ::Type{T}
+) where {T <: AbstractFloat}
     ic = (n - 1) / 2
-    i_minus_ic = collect(T, (0:n-1) .- ic)
+    i_minus_ic = collect(T, (0:(n - 1)) .- ic)
     arg = sign .* (i_minus_ic .* dlog) .* bias
     return exp.(arg)
 end
@@ -141,14 +162,14 @@ or an `AbstractMatrix` whose first axis has length `fftlog.n` (each column is
 a separate signal).
 """
 function forward(f::FFTLog, a::AbstractVector{<:Real})
-    length(a) == f.n || throw(DimensionMismatch(
-        "input length $(length(a)) does not match FFTLog n=$(f.n)"))
+    length(a) == f.n ||
+        throw(DimensionMismatch("input length $(length(a)) does not match FFTLog n=$(f.n)"))
     return _forward_impl(a, f)
 end
 
 function forward(f::FFTLog, a::AbstractMatrix{<:Real})
-    size(a, 1) == f.n || throw(DimensionMismatch(
-        "first axis $(size(a,1)) does not match FFTLog n=$(f.n)"))
+    size(a, 1) == f.n ||
+        throw(DimensionMismatch("first axis $(size(a,1)) does not match FFTLog n=$(f.n)"))
     T = _real_eltype(f.coeffs)
     out = Matrix{T}(undef, size(a)...)
     @inbounds for j in axes(a, 2)
@@ -163,14 +184,14 @@ end
 Inverse FFTLog transform.
 """
 function inverse(f::FFTLog, A::AbstractVector{<:Real})
-    length(A) == f.n || throw(DimensionMismatch(
-        "input length $(length(A)) does not match FFTLog n=$(f.n)"))
+    length(A) == f.n ||
+        throw(DimensionMismatch("input length $(length(A)) does not match FFTLog n=$(f.n)"))
     return _inverse_impl(A, f)
 end
 
 function inverse(f::FFTLog, A::AbstractMatrix{<:Real})
-    size(A, 1) == f.n || throw(DimensionMismatch(
-        "first axis $(size(A,1)) does not match FFTLog n=$(f.n)"))
+    size(A, 1) == f.n ||
+        throw(DimensionMismatch("first axis $(size(A,1)) does not match FFTLog n=$(f.n)"))
     T = _real_eltype(f.coeffs)
     out = Matrix{T}(undef, size(A)...)
     @inbounds for j in axes(A, 2)
@@ -194,7 +215,7 @@ function _forward_impl(a, f::FFTLog)
         A = A .* f.coeffs
     end
     out = f.inv_plan * A
-    out_flipped = reverse(out; dims=1)
+    out_flipped = reverse(out; dims = 1)
     out_flipped .*= pl
     out_flipped .*= blogc
     return out_flipped
@@ -215,7 +236,7 @@ function _inverse_impl(ak, f::FFTLog)
         A = A ./ conj.(f.coeffs)
     end
     out = f.inv_plan * A
-    out_flipped = reverse(out; dims=1)
+    out_flipped = reverse(out; dims = 1)
     out_flipped .*= pl
     return out_flipped
 end

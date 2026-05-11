@@ -16,5 +16,11 @@ using Test
     @test isindomain(d, 1.5 + 0im) == isindomain(k, 0.5 + 0im)
 
     # FFTLog with bad bias warns rather than throws
-    @test_logs (:warn, r".*outside.*") FFTLog(BesselJKernel(0); n = 16, dlog = 0.1, bias = 5.0, lowring = false)
+    @test_logs (:warn, r".*outside.*") FFTLog(
+        BesselJKernel(0);
+        n = 16,
+        dlog = 0.1,
+        bias = 5.0,
+        lowring = false
+    )
 end

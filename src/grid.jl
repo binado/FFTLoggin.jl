@@ -11,9 +11,12 @@ function infer_dlog(x::AbstractVector; rtol::Real = 1e-5)
     dlog = (logx[end] - logx[1]) / (n - 1)
     diffs = diff(logx)
     if !all(isapprox.(diffs, dlog; rtol = rtol))
-        throw(ArgumentError(
+        throw(
+            ArgumentError(
             "Array is not uniformly log-spaced (expected dlog ≈ $dlog, " *
-            "got range [$(minimum(diffs)), $(maximum(diffs))])"))
+            "got range [$(minimum(diffs)), $(maximum(diffs))])",
+        ),
+        )
     end
     return dlog
 end
@@ -24,11 +27,13 @@ end
 Compute the log-center parameter `log(x_c · y_c)` from `x` and one of `logc`,
 `ycenter`, `ymax`, or `ymin`. Mirrors the Python helper.
 """
-function infer_logc(x::AbstractVector;
-                    logc = nothing,
-                    ycenter = nothing,
-                    ymax = nothing,
-                    ymin = nothing)
+function infer_logc(
+        x::AbstractVector;
+        logc = nothing,
+        ycenter = nothing,
+        ymax = nothing,
+        ymin = nothing
+)
     xmin, xmax = first(x), last(x)
     xcenter = sqrt(xmin * xmax)
 
@@ -41,8 +46,9 @@ function infer_logc(x::AbstractVector;
     elseif ymin !== nothing
         return log(ymin * xmax)
     else
-        throw(ArgumentError(
-            "One of `logc`, `ycenter`, `ymax`, or `ymin` must be provided."))
+        throw(
+            ArgumentError("One of `logc`, `ycenter`, `ymax`, or `ymin` must be provided."),
+        )
     end
 end
 
@@ -53,8 +59,8 @@ Given one log-spaced coordinate array (`r` or `k`), return both arrays related
 by `y = exp(logc) ./ reverse(x)` where `logc = log(fftlog.kr)`.
 """
 function loggrid(f::FFTLog; r = nothing, k = nothing)
-    (r === nothing) ⊻ (k === nothing) || throw(ArgumentError(
-        "Provide exactly one of `r` or `k`."))
+    (r === nothing) ⊻ (k === nothing) ||
+        throw(ArgumentError("Provide exactly one of `r` or `k`."))
     logc = log(f.kr isa AbstractArray ? first(f.kr) : f.kr)
     if r !== nothing
         kk = exp(logc) ./ reverse(r)

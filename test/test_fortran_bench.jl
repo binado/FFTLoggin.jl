@@ -26,7 +26,7 @@ function _parse_bench_filename(name::AbstractString)
         mu = parse(Int, m[:mu]),
         q = parse(Float64, m[:q]),
         kr = parse(Float64, m[:kr]),
-        lowring = m[:lr] == "y",
+        lowring = m[:lr] == "y"
     )
 end
 
@@ -49,8 +49,14 @@ f_test(x, mu) = x^(mu + 1) * exp(-x^2 / 2)
 
         # Suppress warnings from out-of-domain bias
         f = redirect_stderr(devnull) do
-            FFTLog(BesselJKernel(params.mu); n = params.n, dlog = dlog,
-                   bias = params.q, kr = params.kr, lowring = params.lowring)
+            FFTLog(
+                BesselJKernel(params.mu);
+                n = params.n,
+                dlog = dlog,
+                bias = params.q,
+                kr = params.kr,
+                lowring = params.lowring
+            )
         end
 
         g = loggrid(f; r = collect(r))

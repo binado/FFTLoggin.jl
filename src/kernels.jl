@@ -82,8 +82,8 @@ function (k::BesselJKernel)(s)
     return _besselj_call(k.μ, s)
 end
 
-@inline _besselj_logvalue(μ, s) =
-    LOG_2 * (s - 1) + loggamma((μ + s) / 2) - loggamma((μ + 2 - s) / 2)
+@inline _besselj_logvalue(μ, s) = LOG_2 * (s - 1) + loggamma((μ + s) / 2) -
+                                  loggamma((μ + 2 - s) / 2)
 
 # Broadcast handles scalar and array combinations of μ and s using Julia rules.
 _besselj_call(μ, s) = exp.(_besselj_logvalue.(μ, s))
@@ -100,7 +100,7 @@ Mellin transform of the spherical Bessel function `j_ℓ`. Implemented as
 struct so that downstream operations (`derive`, `shift`, etc.) dispatch on the
 spherical type when needed.
 """
-struct SphericalBesselJKernel{T,K<:BesselJKernel} <: AbstractKernel
+struct SphericalBesselJKernel{T, K <: BesselJKernel} <: AbstractKernel
     ℓ::T
     _inner::K
 end
@@ -118,7 +118,9 @@ function domain(k::SphericalBesselJKernel)
     return (lo .+ 0.5, hi .+ 0.5)
 end
 
-(k::SphericalBesselJKernel)(s) = SQRT_PI_OVER_2 .* k._inner(s isa AbstractArray ? s .- 0.5 : s - 0.5)
+function (k::SphericalBesselJKernel)(s)
+    SQRT_PI_OVER_2 .* k._inner(s isa AbstractArray ? s .- 0.5 : s - 0.5)
+end
 
 # ---------------------------------------------------------------------------
 # ShiftedKernel
@@ -129,7 +131,7 @@ end
 
 Wrapper representing `s -> base(s + ν)`. Use [`shift`](@ref) to construct.
 """
-struct ShiftedKernel{K<:AbstractKernel,T} <: AbstractKernel
+struct ShiftedKernel{K <: AbstractKernel, T} <: AbstractKernel
     base::K
     ν::T
 end
@@ -139,7 +141,9 @@ function domain(k::ShiftedKernel)
     return (lo .- k.ν, hi .- k.ν)
 end
 
-isindomain(k::ShiftedKernel, s) = isindomain(k.base, s isa AbstractArray ? s .+ k.ν : s + k.ν)
+function isindomain(k::ShiftedKernel, s)
+    isindomain(k.base, s isa AbstractArray ? s .+ k.ν : s + k.ν)
+end
 
 (k::ShiftedKernel)(s) = k.base(s isa AbstractArray ? s .+ k.ν : s + k.ν)
 
@@ -156,12 +160,13 @@ property
 M[d^n f / dr^n](s) = (-1)^n\\,\\frac{Γ(s)}{Γ(s-n)}\\,M[f](s-n).
 ```
 """
-struct DerivativeKernel{K<:AbstractKernel} <: AbstractKernel
+struct DerivativeKernel{K <: AbstractKernel} <: AbstractKernel
     base::K
     order::Int
-    function DerivativeKernel(base::K, order::Int) where {K<:AbstractKernel}
-        order >= 1 || throw(ArgumentError(
-            "Expected derivative order to be an integer >= 1, got $order"))
+    function DerivativeKernel(base::K, order::Int) where {K <: AbstractKernel}
+        order >= 1 || throw(
+            ArgumentError("Expected derivative order to be an integer >= 1, got $order"),
+        )
         new{K}(base, order)
     end
 end
@@ -171,7 +176,9 @@ function domain(k::DerivativeKernel)
     return (lo .+ k.order, hi .+ k.order)
 end
 
-isindomain(k::DerivativeKernel, s) = isindomain(k.base, s isa AbstractArray ? s .- k.order : s - k.order)
+function isindomain(k::DerivativeKernel, s)
+    isindomain(k.base, s isa AbstractArray ? s .- k.order : s - k.order)
+end
 
 function (k::DerivativeKernel)(s)
     n = k.order
@@ -202,7 +209,7 @@ Type-stable composition of kernels. Forward/inverse with a vector input
 produces a `Matrix` whose columns are the per-kernel results. Empty tuples are
 disallowed; nested `TupleKernel`s are flattened at construction.
 """
-struct TupleKernel{Ks<:Tuple{Vararg{AbstractKernel}}} <: AbstractKernel
+struct TupleKernel{Ks <: Tuple{Vararg{AbstractKernel}}} <: AbstractKernel
     kernels::Ks
 end
 
@@ -213,10 +220,10 @@ function TupleKernel(ks::AbstractKernel...)
 end
 
 @inline _flatten_tk(acc::Tuple) = acc
-@inline _flatten_tk(acc::Tuple, k::AbstractKernel, rest...) =
-    _flatten_tk((acc..., k), rest...)
-@inline _flatten_tk(acc::Tuple, k::TupleKernel, rest...) =
-    _flatten_tk((acc..., k.kernels...), rest...)
+@inline _flatten_tk(acc::Tuple, k::AbstractKernel, rest...) = _flatten_tk((acc..., k), rest...)
+@inline _flatten_tk(acc::Tuple, k::TupleKernel, rest...) = _flatten_tk(
+    (
+        acc..., k.kernels...), rest...)
 @inline _flatten_tuple_kernels(ks::Tuple) = _flatten_tk((), ks...)
 
 function domain(k::TupleKernel)
@@ -239,8 +246,13 @@ _stack_kernel_outputs(parts::Tuple{Vararg{Number}}) = collect(parts)
 function _stack_kernel_outputs(parts::Tuple)
     # All elements either scalars or arrays; broadcast to common shape and stack.
     bs = Broadcast.broadcast_shape(map(size, parts)...)
-    arrs = map(p -> p isa AbstractArray ? (size(p) == bs ? p : broadcast(identity, p, ones(eltype(p), bs))) : fill(p, bs), parts)
-    return cat(arrs...; dims=ndims(arrs[1]) + 1)
+    arrs = map(
+        p -> p isa AbstractArray ?
+             (size(p) == bs ? p : broadcast(identity, p, ones(eltype(p), bs))) :
+             fill(p, bs),
+        parts
+    )
+    return cat(arrs...; dims = ndims(arrs[1]) + 1)
 end
 
 # ---------------------------------------------------------------------------
@@ -253,15 +265,20 @@ end
 Return a new kernel representing the `order`-th derivative of `k`. `order = 0`
 returns `k` unchanged. Negative orders raise `ArgumentError`.
 """
-function derive(k::AbstractKernel, order::Integer=1)
+function derive(k::AbstractKernel, order::Integer = 1)
     order < 0 && throw(ArgumentError("derive order must be >= 0, got $order"))
     order == 0 && return k
     return DerivativeKernel(k, Int(order))
 end
 
-derive(::TupleKernel, order::Integer=1) =
-    throw(ArgumentError("derive on TupleKernel is not defined; construct " *
-                        "TupleKernel(derive.(kernels, order)...) explicitly"))
+function derive(::TupleKernel, order::Integer = 1)
+    throw(
+        ArgumentError(
+        "derive on TupleKernel is not defined; construct " *
+        "TupleKernel(derive.(kernels, order)...) explicitly",
+    ),
+    )
+end
 
 """
     shift(k::AbstractKernel, ν)
@@ -283,9 +300,14 @@ function shift(k::ShiftedKernel, ν)
     return ShiftedKernel(k.base, k.ν .+ ν)
 end
 
-shift(::TupleKernel, ν) =
-    throw(ArgumentError("shift on TupleKernel is not defined; construct " *
-                        "TupleKernel(shift.(kernels, ν)...) explicitly"))
+function shift(::TupleKernel, ν)
+    throw(
+        ArgumentError(
+        "shift on TupleKernel is not defined; construct " *
+        "TupleKernel(shift.(kernels, ν)...) explicitly",
+    ),
+    )
+end
 
 # ---------------------------------------------------------------------------
 # optimal_logcenter
@@ -303,7 +325,7 @@ For multiple spacings or biases, use Julia broadcasting:
 optimal_logcenter.(Ref(kernel), dlogs, biases)
 ```
 """
-function optimal_logcenter(kernel::AbstractKernel, dlog::Number, bias::Number=0.0)
+function optimal_logcenter(kernel::AbstractKernel, dlog::Number, bias::Number = 0.0)
     s = im * pi / dlog + 1 + bias
     arg = angle.(kernel(s))
     return dlog .* arg ./ pi

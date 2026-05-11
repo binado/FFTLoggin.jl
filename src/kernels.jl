@@ -18,7 +18,17 @@ abstract type AbstractKernel end
 
 Return `(lo, hi)`, the strip of convergence of the kernel `k`.
 """
+# Declare the generic function so kernel implementations can add methods.
 function domain end
+
+"""
+    convergence_strip(k::AbstractKernel)
+
+Return `(lo, hi)`, the strip of convergence of the kernel `k`.
+
+This is a descriptive alias for [`domain`](@ref).
+"""
+convergence_strip(k::AbstractKernel) = domain(k)
 
 """
     mellin(k::AbstractKernel, s)
@@ -51,15 +61,15 @@ Mellin transform kernel of the Bessel function ``J_μ``.
 M[J_μ](s) = 2^{s-1}\\,\\frac{Γ((μ+s)/2)}{Γ((μ+2-s)/2)}
 ```
 
-`μ` may be a real scalar or an `AbstractArray`. Integer values are promoted to
-`Float64`.
+`μ` may be a real scalar or an `AbstractArray`.
+
+Array-valued `μ` is first-class API. It is useful when evaluating many orders
+at once, for example line-of-sight integrals vectorized across multipoles
+`ℓ`. Kernel evaluation follows Julia broadcasting rules across `μ` and `s`.
 """
 struct BesselJKernel{T} <: AbstractKernel
     μ::T
 end
-
-BesselJKernel(μ::Integer) = BesselJKernel(float(μ))
-BesselJKernel(μ::AbstractArray{<:Integer}) = BesselJKernel(float.(μ))
 
 domain(k::BesselJKernel) = (-k.μ, oftype(_one_like(k.μ), 1.5) .* _ones_like(k.μ))
 
@@ -75,13 +85,8 @@ end
 @inline _besselj_logvalue(μ, s) =
     LOG_2 * (s - 1) + loggamma((μ + s) / 2) - loggamma((μ + 2 - s) / 2)
 
-# Scalar μ, scalar or array s
-_besselj_call(μ::Real, s::Number) = exp(_besselj_logvalue(μ, s))
-_besselj_call(μ::Real, s::AbstractArray) = exp.(_besselj_logvalue.(μ, s))
-
-# Array μ: broadcasting against s using Julia rules. The user is responsible
-# for shaping μ and s so they broadcast correctly.
-_besselj_call(μ::AbstractArray, s) = exp.(_besselj_logvalue.(μ, s))
+# Broadcast handles scalar and array combinations of μ and s using Julia rules.
+_besselj_call(μ, s) = exp.(_besselj_logvalue.(μ, s))
 
 # ---------------------------------------------------------------------------
 # SphericalBesselJKernel — standalone, dispatches on its own type
@@ -95,18 +100,16 @@ Mellin transform of the spherical Bessel function `j_ℓ`. Implemented as
 struct so that downstream operations (`derive`, `shift`, etc.) dispatch on the
 spherical type when needed.
 """
-struct SphericalBesselJKernel{T} <: AbstractKernel
+struct SphericalBesselJKernel{T,K<:BesselJKernel} <: AbstractKernel
     ℓ::T
-    _inner::BesselJKernel{T}
+    _inner::K
 end
 
 function SphericalBesselJKernel(ℓ)
-    ℓf = ℓ isa Integer ? float(ℓ) : ℓ
-    if ℓf isa AbstractArray
-        ℓf = float.(ℓf)
-        return SphericalBesselJKernel(ℓf, BesselJKernel(ℓf .+ 0.5))
+    if ℓ isa AbstractArray
+        return SphericalBesselJKernel(ℓ, BesselJKernel(ℓ .+ 0.5))
     else
-        return SphericalBesselJKernel(ℓf, BesselJKernel(ℓf + 0.5))
+        return SphericalBesselJKernel(ℓ, BesselJKernel(ℓ + 0.5))
     end
 end
 
@@ -126,7 +129,7 @@ end
 
 Wrapper representing `s -> base(s + ν)`. Use [`shift`](@ref) to construct.
 """
-struct ShiftedKernel{K<:AbstractKernel, T} <: AbstractKernel
+struct ShiftedKernel{K<:AbstractKernel,T} <: AbstractKernel
     base::K
     ν::T
 end
@@ -237,7 +240,7 @@ function _stack_kernel_outputs(parts::Tuple)
     # All elements either scalars or arrays; broadcast to common shape and stack.
     bs = Broadcast.broadcast_shape(map(size, parts)...)
     arrs = map(p -> p isa AbstractArray ? (size(p) == bs ? p : broadcast(identity, p, ones(eltype(p), bs))) : fill(p, bs), parts)
-    return cat(arrs...; dims = ndims(arrs[1]) + 1)
+    return cat(arrs...; dims=ndims(arrs[1]) + 1)
 end
 
 # ---------------------------------------------------------------------------
@@ -250,13 +253,13 @@ end
 Return a new kernel representing the `order`-th derivative of `k`. `order = 0`
 returns `k` unchanged. Negative orders raise `ArgumentError`.
 """
-function derive(k::AbstractKernel, order::Integer = 1)
+function derive(k::AbstractKernel, order::Integer=1)
     order < 0 && throw(ArgumentError("derive order must be >= 0, got $order"))
     order == 0 && return k
     return DerivativeKernel(k, Int(order))
 end
 
-derive(::TupleKernel, order::Integer = 1) =
+derive(::TupleKernel, order::Integer=1) =
     throw(ArgumentError("derive on TupleKernel is not defined; construct " *
                         "TupleKernel(derive.(kernels, order)...) explicitly"))
 
@@ -267,19 +270,17 @@ Return a kernel representing `s -> k(s + ν)`. `ν == 0` returns `k` unchanged.
 For `ShiftedKernel`s, the shifts are combined.
 """
 function shift(k::AbstractKernel, ν)
-    νf = ν isa Integer ? float(ν) : ν
-    if νf isa Number && νf == 0
+    if ν isa Number && ν == 0
         return k
     end
-    return ShiftedKernel(k, νf)
+    return ShiftedKernel(k, ν)
 end
 
 function shift(k::ShiftedKernel, ν)
-    νf = ν isa Integer ? float(ν) : ν
-    if νf isa Number && νf == 0
+    if ν isa Number && ν == 0
         return k
     end
-    return ShiftedKernel(k.base, k.ν .+ νf)
+    return ShiftedKernel(k.base, k.ν .+ ν)
 end
 
 shift(::TupleKernel, ν) =
@@ -294,10 +295,16 @@ shift(::TupleKernel, ν) =
     optimal_logcenter(kernel, dlog, bias = 0)
 
 Return the optimal log-center parameter (Hamilton 2000, Eq. 30) that minimizes
-ringing for the given kernel, log spacing, and bias.
+ringing for the given kernel, scalar log spacing, and scalar bias.
+
+For multiple spacings or biases, use Julia broadcasting:
+
+```julia
+optimal_logcenter.(Ref(kernel), dlogs, biases)
+```
 """
-function optimal_logcenter(kernel::AbstractKernel, dlog, bias = 0.0)
-    s = im * pi ./ dlog .+ 1 .+ bias
+function optimal_logcenter(kernel::AbstractKernel, dlog::Number, bias::Number=0.0)
+    s = im * pi / dlog + 1 + bias
     arg = angle.(kernel(s))
     return dlog .* arg ./ pi
 end

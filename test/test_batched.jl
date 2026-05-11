@@ -7,10 +7,10 @@ using Test
     f = FFTLog(BesselJKernel(0), r)
 
     a = @. exp(-(r / 1.0)^2)
-    A_single = forward(a, f)
+    A_single = forward(f, a)
 
     A_batch = hcat(a, 2 .* a, 0.5 .* a)
-    out = forward(A_batch, f)
+    out = forward(f, A_batch)
     @test size(out) == (n, 3)
     @test isapprox(out[:, 1], A_single; rtol = 1e-12)
     @test isapprox(out[:, 2], 2 .* A_single; rtol = 1e-12)

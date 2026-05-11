@@ -9,8 +9,8 @@ using Test
                 f = FFTLog(BesselJKernel(0), r;
                            bias = bias, kr = kr, lowring = true)
                 a = @. exp(-(r / 1.0)^2)
-                A = forward(a, f)
-                a_back = inverse(A, f)
+                A = forward(f, a)
+                a_back = inverse(f, A)
                 @test isapprox(a, a_back; atol = 1e-10, rtol = 1e-7)
             end
         end

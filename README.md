@@ -27,10 +27,10 @@ r = 10 .^ range(-2, 2; length=128)
 fftlog = FFTLog(BesselJKernel(0), r; kr=1.0)
 
 a = @. exp(-(r/1.0)^2)
-A = forward(a, fftlog)
+A = forward(fftlog, a)
 
 g = loggrid(fftlog; r=r)        # NamedTuple (r=..., k=...)
-a_back = inverse(A, fftlog)     # roundtrip
+a_back = inverse(fftlog, A)     # roundtrip
 ```
 
 ## Status (Phase 1)

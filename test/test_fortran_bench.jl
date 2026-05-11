@@ -57,7 +57,7 @@ f_test(x, mu) = x^(mu + 1) * exp(-x^2 / 2)
         @test isapprox(g.k, k_expected; rtol = 1e-10)
 
         fr = f_test.(r, params.mu)
-        ak = forward(fr, f)
+        ak = forward(f, fr)
         @test isapprox(ak, a_expected; rtol = rtol)
         nchecked += 1
     end

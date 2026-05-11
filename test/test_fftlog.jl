@@ -9,15 +9,16 @@ using Test
     @test isfinite(f.kr)
 
     a = @. exp(-(r / 1.0)^2)
-    A = forward(a, f)
+    A = forward(f, a)
     @test length(A) == 128
     @test all(isfinite, A)
 
     # Callable sugar
-    @test forward(a, f) ≈ f(a)
+    @test forward(f, a) ≈ f(a)
+    @test inverse(f, A) ≈ a rtol=1e-7
 
     # Dimension mismatch
-    @test_throws DimensionMismatch forward(zeros(50), f)
+    @test_throws DimensionMismatch forward(f, zeros(50))
 end
 
 @testset "lowring snap" begin

@@ -18,6 +18,13 @@ using SpecialFunctions: gamma
         lo, hi = domain(BesselJKernel(2.0))
         @test lo == -2.0
         @test hi ≈ 1.5
+        @test convergence_strip(BesselJKernel(2.0)) == domain(BesselJKernel(2.0))
+
+        # Array-valued orders are public API for vectorized kernels.
+        μs = [0, 1, 2]
+        kout = BesselJKernel(μs)(1.0 + 0im)
+        @test size(kout) == size(μs)
+        @test all(isfinite, real.(kout))
     end
 
     @testset "Spherical Bessel kernel" begin
@@ -73,5 +80,11 @@ using SpecialFunctions: gamma
     @testset "optimal_logcenter" begin
         v = optimal_logcenter(BesselJKernel(0), 0.05, 0.0)
         @test isfinite(v)
+
+        dlogs = [0.04, 0.05]
+        biases = [0.0, 0.1]
+        vb = optimal_logcenter.(Ref(BesselJKernel(0)), dlogs, biases)
+        @test size(vb) == size(dlogs)
+        @test all(isfinite, vb)
     end
 end

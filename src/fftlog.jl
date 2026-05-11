@@ -19,6 +19,7 @@ struct FFTLog{K <: AbstractKernel, T <: AbstractFloat, C <: Complex, D, B, R, CT
     bias::B
     kr::R
     coeffs::CT
+    _bias_window_forward::Vector{T}  # forward mask; inverse uses ./ this vector
     fwd_plan::P
     inv_plan::IP
 end
@@ -83,6 +84,7 @@ function FFTLog(
 
     # Real FFT plans for transforms along axis 1.
     T = _real_eltype(coeffs)
+    bias_window_forward = _bias_power_law(bias, dlog, Int(n), -1, T)
     sample = Vector{T}(undef, Int(n))
     fwd_plan = plan_rfft(sample)
     csample = Vector{Complex{T}}(undef, Int(n) ÷ 2 + 1)
@@ -106,6 +108,7 @@ function FFTLog(
         bias,
         kr_eff,
         coeffs,
+        bias_window_forward,
         fwd_plan,
         inv_plan
     )
@@ -221,7 +224,7 @@ end
 function _forward_impl(a, f::FFTLog)
     T = _real_eltype(f.coeffs)
     aT = eltype(a) <: T ? a : convert.(T, a)
-    pl = _bias_power_law(f.bias, f.dlog, f.n, -1, T)
+    pl = f._bias_window_forward
     blogc = _bias_logc(f.bias, f.kr, -1)
 
     a_biased = similar(aT, T, size(aT))
@@ -242,11 +245,11 @@ end
 function _inverse_impl(ak, f::FFTLog)
     T = _real_eltype(f.coeffs)
     akT = eltype(ak) <: T ? ak : convert.(T, ak)
-    pl = _bias_power_law(f.bias, f.dlog, f.n, 1, T)
+    pl_fwd = f._bias_window_forward
     blogc = _bias_logc(f.bias, f.kr, 1)
 
     ak_biased = similar(akT, T, size(akT))
-    ak_biased .= akT .* pl .* blogc
+    ak_biased .= akT ./ pl_fwd .* blogc
     A = f.fwd_plan * ak_biased
     if f.coeffs isa AbstractVector
         A .= A ./ conj.(f.coeffs)
@@ -255,6 +258,6 @@ function _inverse_impl(ak, f::FFTLog)
     end
     out = _irfft_columns(A, f)
     out_flipped = reverse(out; dims = 1)
-    out_flipped .*= pl
+    out_flipped ./= pl_fwd
     return out_flipped
 end

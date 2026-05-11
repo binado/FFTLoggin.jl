@@ -16,6 +16,8 @@ SpecialFunctions = "2"
 julia = "1.10"
 
 [extras]
+# Optional timing dependency for `scripts/benchmark_fftlog.jl` (via `scripts/Project.toml`).
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]

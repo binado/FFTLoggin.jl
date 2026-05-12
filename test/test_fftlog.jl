@@ -10,15 +10,20 @@ using Test
 
     a = @. exp(-(r / 1.0)^2)
     A = forward(f, a)
+    ws = FFTLogWorkspace(f, a)
+    A_ws = forward(f, a, ws)
     @test length(A) == 128
     @test all(isfinite, A)
+    @test A_ws ≈ A
 
     # Callable sugar
     @test forward(f, a) ≈ f(a)
     @test inverse(f, A) ≈ a rtol=1e-7
+    @test inverse(f, A_ws; workspace = ws) ≈ a rtol=1e-7
 
     # Dimension mismatch
     @test_throws DimensionMismatch forward(f, zeros(50))
+    @test_throws DimensionMismatch FFTLogWorkspace(f, zeros(50))
 end
 
 @testset "lowring snap" begin
@@ -40,11 +45,14 @@ end
         dlog = dlog,
         bias = 0.0,
         kr = 1.0,
-        lowring = false,
+        lowring = false
     )
     fr = @. r^(0 + 1) * exp(-r^2 / 2)
     ak = forward(f, fr)
+    ws = FFTLogWorkspace(f, fr)
+    ak_ws = forward(f, fr, ws)
     @test size(ak) == (n, 3)
+    @test ak_ws ≈ ak
     @test all(isfinite, ak)
 
     scalar_fftlog(μ) = FFTLog(
@@ -53,14 +61,16 @@ end
         dlog = dlog,
         bias = 0.0,
         kr = 1.0,
-        lowring = false,
+        lowring = false
     )
     expected = hcat(forward.(scalar_fftlog.([0.0, 1.0, 2.0]), Ref(fr))...)
     @test isapprox(ak, expected; rtol = 1e-12)
 
     back = inverse(f, ak)
+    back_ws = inverse(f, ak_ws, ws)
     @test size(back) == (n, 3)
     @test isapprox(back, repeat(fr, 1, 3); rtol = 1e-7)
+    @test isapprox(back_ws, repeat(fr, 1, 3); rtol = 1e-7)
 end
 
 @testset "FFTLog batched kernel input broadcasting" begin
@@ -74,7 +84,7 @@ end
         dlog = dlog,
         bias = 0.0,
         kr = 1.0,
-        lowring = false,
+        lowring = false
     )
     fr = @. r * exp(-r^2 / 2)
     ak = forward(f, fr)
@@ -95,12 +105,17 @@ end
         dlog = dlog,
         bias = 0.0,
         kr = 1.0,
-        lowring = false,
+        lowring = false
     )
     signals = reshape(hcat(fr, 2 .* fr), n, 1, 2)
     out = forward(fg, signals)
+    ws = FFTLogWorkspace(fg, signals)
+    out_ws = forward(fg, signals; workspace = ws)
     @test size(out) == (n, 2, 2)
+    @test out_ws ≈ out
     back = inverse(fg, out)
+    back_ws = inverse(fg, out_ws; workspace = ws)
     @test size(back) == (n, 2, 2)
     @test isapprox(back, repeat(signals, 1, 2, 1); rtol = 1e-7)
+    @test isapprox(back_ws, repeat(signals, 1, 2, 1); rtol = 1e-7)
 end

@@ -1,18 +1,6 @@
-# Benchmark FFTLog `forward` for two kernel configurations used in the Fortran
-# reference test (`test/test_fortran_bench.jl`):
-#
-#   1) Vector sample `fr` on a log-spaced grid, scalar `BesselJKernel(μ)`,
-#      scalar `dlog`, scalar `bias`.
-#   2) Same vector `fr`, `BesselJKernel` with batch orders `μ` (row-shaped for
-#      broadcasting), same scalar `dlog` and `bias`.
-#
-# Run from the repository root (`scripts/Project.toml` provides BenchmarkTools;
-# the package itself is loaded via `LOAD_PATH`, see below):
-#
-#   julia --project=scripts scripts/benchmark_fftlog.jl
-#
-# Optional first argument: comma-separated grid sizes, e.g. `64,128,256`.
-#
+# Scalar vs batched-kernel `forward` timing (Fortran-style log10 grid, `f_test` spectrum).
+# Run: julia --project=scripts scripts/benchmark_fftlog.jl
+# Optional argv: comma-separated n, e.g. 64,128,256.
 const REPO_ROOT = normpath(joinpath(@__DIR__, ".."))
 push!(LOAD_PATH, REPO_ROOT)
 
@@ -21,13 +9,8 @@ using BenchmarkTools: prettytime
 using FFTLoggin
 using Printf
 
-# Same test spectrum as in `test/test_fortran_bench.jl`.
 f_test(x, mu) = x^(mu + 1) * exp(-x^2 / 2)
 
-"""
-Build `(r, dlog, fr)` matching the Fortran harness: uniform `log10(r)` grid and
-scalar `dlog`, `bias`.
-"""
 function _fortran_style_arrays(n::Integer, log10rmin, log10rmax, mu_fr::Real)
     r = 10 .^ range(log10rmin, log10rmax; length = n)
     dlog = (log10rmax - log10rmin) / (n - 1) * log(10)
@@ -93,7 +76,6 @@ end
 function main()
     ns = _parse_ns(get(ARGS, 1, nothing))
 
-    # Representative Fortran-style parameters (scalar `dlog`, `bias`, `kr`).
     log10rmin = -4.0
     log10rmax = 4.0
     mu_scalar = 0
@@ -142,9 +124,6 @@ function main()
         t2 = prettytime(time(median(b2)))
         @printf "%6d  %-18s  %-18s  %10d  %10d\n" n t1 t2 b1.allocs b2.allocs
     end
-
-    println()
-    println("Tip: pass grid sizes as first argument, e.g. `192,256`.")
 end
 
 main()

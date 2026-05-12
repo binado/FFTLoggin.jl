@@ -20,7 +20,7 @@ struct FFTLog{
     bias::B
     kr::R
     coeffs::CT
-    _bias_window_forward::Vector{T}  # forward mask; inverse uses ./ this vector
+    _bias_window_forward::Vector{T}
     fwd_plan_vec::P
     inv_plan_vec::IP
     fwd_plan_batch::BP
@@ -158,19 +158,7 @@ function _broadcast_sample_shape(f::FFTLog, a)
     ndims(a) > 0 || throw(DimensionMismatch("input must have sample axis 1"))
     size(a, 1) == f.n ||
         throw(DimensionMismatch("first axis $(size(a,1)) does not match FFTLog n=$(f.n)"))
-    try
-        return Broadcast.broadcast_shape(size(a), _sample_shape(f))
-    catch err
-        if err isa DimensionMismatch
-            throw(
-                DimensionMismatch(
-                    "input shape $(size(a)) does not broadcast with FFTLog sample shape " *
-                    "$(_sample_shape(f))"
-                )
-            )
-        end
-        rethrow()
-    end
+    return Broadcast.broadcast_shape(size(a), _sample_shape(f))
 end
 
 function _rfft(f::FFTLog, a::AbstractVector)

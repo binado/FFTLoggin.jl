@@ -1,8 +1,6 @@
 # Scalar vs batched-kernel `forward` timing (Fortran-style log10 grid, `f_test` spectrum).
 # Run: julia --project=scripts scripts/benchmark_fftlog.jl
 # Optional argv: comma-separated n, e.g. 64,128,256.
-const REPO_ROOT = normpath(joinpath(@__DIR__, ".."))
-push!(LOAD_PATH, REPO_ROOT)
 
 using BenchmarkTools
 using BenchmarkTools: prettytime

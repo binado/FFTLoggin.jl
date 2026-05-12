@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+    tags: ['*']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+
+jobs:
+  test:
+    name: Julia ${{ matrix.version }} - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - '1.12'
+          - '1'
+        os:
+          - ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: ${{ matrix.version }}
+
+      - uses: julia-actions/cache@v2
+
+      # Workspace layout requires Julia 1.12+; root Manifest.toml pins FFTLoggin + FFTLogginBenchmark.
+      - name: Instantiate Julia workspace
+        run: julia --color=yes --depwarn=yes --project=. -e 'using Pkg; Pkg.instantiate()'
+
+      - name: Run FFTLoggin tests
+        run: julia --color=yes --depwarn=yes --project=. -e 'using Pkg; Pkg.test("FFTLoggin"; coverage=true)'

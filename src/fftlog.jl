@@ -85,10 +85,17 @@ function FFTLog(
     # Real FFT plans for transforms along axis 1.
     T = _real_eltype(coeffs)
     bias_window_forward = _bias_power_law(bias, dlog, Int(n), -1, T)
-    sample = Vector{T}(undef, Int(n))
-    fwd_plan = plan_rfft(sample)
-    csample = Vector{Complex{T}}(undef, Int(n) ÷ 2 + 1)
-    inv_plan = plan_irfft(csample, Int(n))
+    if coeffs isa AbstractVector
+        sample = Vector{T}(undef, Int(n))
+        fwd_plan = plan_rfft(sample)
+        csample = Vector{Complex{T}}(undef, Int(n) ÷ 2 + 1)
+        inv_plan = plan_irfft(csample, Int(n))
+    else
+        sample = Array{T}(undef, Int(n), size(coeffs)[2:end]...)
+        fwd_plan = plan_rfft(sample, (1,))
+        csample = Array{Complex{T}}(undef, size(coeffs))
+        inv_plan = plan_irfft(csample, Int(n), (1,))
+    end
 
     C = Complex{T}
     return FFTLog{
@@ -134,6 +141,43 @@ end
 _real_eltype(x::Number) = real(typeof(x)) <: AbstractFloat ? real(typeof(x)) : Float64
 _real_eltype(x::AbstractArray) = (T = real(eltype(x)); T <: AbstractFloat ? T : Float64)
 
+_sample_shape(f::FFTLog) = f.coeffs isa AbstractVector ?
+                            (f.n,) :
+                            (f.n, size(f.coeffs)[2:end]...)
+
+function _broadcast_sample_shape(f::FFTLog, a)
+    ndims(a) > 0 || throw(DimensionMismatch("input must have sample axis 1"))
+    size(a, 1) == f.n ||
+        throw(DimensionMismatch("first axis $(size(a,1)) does not match FFTLog n=$(f.n)"))
+    try
+        return Broadcast.broadcast_shape(size(a), _sample_shape(f))
+    catch err
+        if err isa DimensionMismatch
+            throw(
+                DimensionMismatch(
+                    "input shape $(size(a)) does not broadcast with FFTLog sample shape " *
+                    "$(_sample_shape(f))"
+                )
+            )
+        end
+        rethrow()
+    end
+end
+
+function _rfft_first_axis(f::FFTLog, a)
+    if size(a) == _sample_shape(f)
+        return f.fwd_plan * a
+    end
+    return plan_rfft(a, (1,)) * a
+end
+
+function _irfft_first_axis(f::FFTLog, A)
+    if size(A) == size(f.coeffs)
+        return f.inv_plan * A
+    end
+    return plan_irfft(A, f.n, (1,)) * A
+end
+
 # --- Bias factors ----------------------------------------------------------
 
 function _bias_power_law(
@@ -155,87 +199,41 @@ end
 
 _bias_logc_arr(bias, kr, sign::Int) = exp.(sign .* bias .* log.(kr))
 
-# IRFFT along Fourier axis 1; column-wise when `A` has trailing batch dims (batched kernels).
-function _irfft_columns(A, f::FFTLog)
-    if A isa AbstractVector
-        return f.inv_plan * A
-    end
-    T = _real_eltype(f.coeffs)
-    sz = size(A)
-    nfreq = size(A, 1)
-    batch = sz[2:end]
-    ncol = prod(batch)
-    A2 = reshape(A, nfreq, ncol)
-    out2 = Matrix{T}(undef, f.n, ncol)
-    @inbounds for j in axes(A2, 2)
-        out2[:, j] = f.inv_plan * view(A2, :, j)
-    end
-    return reshape(out2, f.n, batch...)
-end
-
 # --- Forward / Inverse ------------------------------------------------------
 
 """
     forward(fftlog, a) -> A
 
 Forward FFTLog transform. `a` may be an `AbstractVector` of length `fftlog.n`
-or an `AbstractMatrix` whose first axis has length `fftlog.n` (each column is
-a separate signal).
+or an array whose first axis has length `fftlog.n`. Trailing axes broadcast
+with the kernel batch axes.
 """
-function forward(f::FFTLog, a::AbstractVector{<:Real})
-    length(a) == f.n ||
-        throw(DimensionMismatch("input length $(length(a)) does not match FFTLog n=$(f.n)"))
+function forward(f::FFTLog, a::AbstractArray{<:Real})
     return _forward_impl(a, f)
-end
-
-function forward(f::FFTLog, a::AbstractMatrix{<:Real})
-    size(a, 1) == f.n ||
-        throw(DimensionMismatch("first axis $(size(a,1)) does not match FFTLog n=$(f.n)"))
-    T = _real_eltype(f.coeffs)
-    out = Matrix{T}(undef, size(a)...)
-    @inbounds for j in axes(a, 2)
-        out[:, j] = _forward_impl(view(a, :, j), f)
-    end
-    return out
 end
 
 """
     inverse(fftlog, A) -> a
 
-Inverse FFTLog transform.
+Inverse FFTLog transform. `A` may be an `AbstractVector` of length `fftlog.n`
+or an array whose first axis has length `fftlog.n`. Trailing axes broadcast
+with the kernel batch axes.
 """
-function inverse(f::FFTLog, A::AbstractVector{<:Real})
-    length(A) == f.n ||
-        throw(DimensionMismatch("input length $(length(A)) does not match FFTLog n=$(f.n)"))
+function inverse(f::FFTLog, A::AbstractArray{<:Real})
     return _inverse_impl(A, f)
-end
-
-function inverse(f::FFTLog, A::AbstractMatrix{<:Real})
-    size(A, 1) == f.n ||
-        throw(DimensionMismatch("first axis $(size(A,1)) does not match FFTLog n=$(f.n)"))
-    T = _real_eltype(f.coeffs)
-    out = Matrix{T}(undef, size(A)...)
-    @inbounds for j in axes(A, 2)
-        out[:, j] = _inverse_impl(view(A, :, j), f)
-    end
-    return out
 end
 
 function _forward_impl(a, f::FFTLog)
     T = _real_eltype(f.coeffs)
-    aT = eltype(a) <: T ? a : convert.(T, a)
+    sample_shape = _broadcast_sample_shape(f, a)
     pl = f._bias_window_forward
     blogc = _bias_logc(f.bias, f.kr, -1)
 
-    a_biased = similar(aT, T, size(aT))
-    a_biased .= aT .* pl
-    A = f.fwd_plan * a_biased
-    if f.coeffs isa AbstractVector
-        A .*= f.coeffs
-    else
-        A = A .* f.coeffs
-    end
-    out = _irfft_columns(A, f)
+    a_biased = Array{T}(undef, sample_shape)
+    a_biased .= a .* pl
+    A = _rfft_first_axis(f, a_biased)
+    A .*= f.coeffs
+    out = _irfft_first_axis(f, A)
     out_flipped = reverse(out; dims = 1)
     out_flipped .*= pl
     out_flipped .*= blogc
@@ -244,19 +242,15 @@ end
 
 function _inverse_impl(ak, f::FFTLog)
     T = _real_eltype(f.coeffs)
-    akT = eltype(ak) <: T ? ak : convert.(T, ak)
+    sample_shape = _broadcast_sample_shape(f, ak)
     pl_fwd = f._bias_window_forward
     blogc = _bias_logc(f.bias, f.kr, 1)
 
-    ak_biased = similar(akT, T, size(akT))
-    ak_biased .= akT ./ pl_fwd .* blogc
-    A = f.fwd_plan * ak_biased
-    if f.coeffs isa AbstractVector
-        A .= A ./ conj.(f.coeffs)
-    else
-        A = A ./ conj.(f.coeffs)
-    end
-    out = _irfft_columns(A, f)
+    ak_biased = Array{T}(undef, sample_shape)
+    ak_biased .= ak ./ pl_fwd .* blogc
+    A = _rfft_first_axis(f, ak_biased)
+    A ./= conj.(f.coeffs)
+    out = _irfft_first_axis(f, A)
     out_flipped = reverse(out; dims = 1)
     out_flipped ./= pl_fwd
     return out_flipped

@@ -8,7 +8,7 @@ using SpecialFunctions: loggamma
 export AbstractKernel, BesselJKernel, SphericalBesselJKernel
 export ShiftedKernel, DerivativeKernel, TupleKernel
 export derive, shift, domain, convergence_strip, isindomain, mellin, optimal_logcenter
-export FFTLog, forward, inverse
+export FFTLog, FFTLogWorkspace, forward, inverse
 export loggrid, infer_dlog, infer_logc
 
 include("utils.jl")

@@ -282,11 +282,15 @@ function _bias_power_law(
     return exp.(arg)
 end
 
-function _bias_logc(bias, kr, sign::Int)
-    return exp(sign * bias * log(kr))
+_bias_logc(bias::Number, kr::Number, sign::Int) = exp(sign * bias * log(kr))
+
+function _bias_logc(bias, kr::Number, sign::Int)
+    return exp.(sign .* bias .* log(kr))
 end
 
-_bias_logc_arr(bias, kr, sign::Int) = exp.(sign .* bias .* log.(kr))
+function _bias_logc(bias, kr::AbstractArray, sign::Int)
+    return exp.(sign .* bias .* log.(kr))
+end
 
 # --- Forward / Inverse ------------------------------------------------------
 

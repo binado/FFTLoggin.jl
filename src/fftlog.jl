@@ -12,7 +12,8 @@ Python package).
 For array-valued kernels, the sample/transform axis remains first and kernel
 batch axes are trailing.
 """
-struct FFTLog{K <: AbstractKernel, T <: AbstractFloat, C <: Complex, D, B, R, CT, P, IP}
+struct FFTLog{
+        K <: AbstractKernel, T <: AbstractFloat, C <: Complex, D, B, R, CT, P, IP, BP, BIP}
     kernel::K
     n::Int
     dlog::D
@@ -20,8 +21,10 @@ struct FFTLog{K <: AbstractKernel, T <: AbstractFloat, C <: Complex, D, B, R, CT
     kr::R
     coeffs::CT
     _bias_window_forward::Vector{T}  # forward mask; inverse uses ./ this vector
-    fwd_plan::P
-    inv_plan::IP
+    fwd_plan_vec::P
+    inv_plan_vec::IP
+    fwd_plan_batch::BP
+    inv_plan_batch::BIP
 end
 
 # --- Coefficient computation -----------------------------------------------
@@ -85,16 +88,18 @@ function FFTLog(
     # Real FFT plans for transforms along axis 1.
     T = _real_eltype(coeffs)
     bias_window_forward = _bias_power_law(bias, dlog, Int(n), -1, T)
+    sample_vec = Vector{T}(undef, Int(n))
+    fwd_plan_vec = plan_rfft(sample_vec)
+    csample_vec = Vector{Complex{T}}(undef, Int(n) ÷ 2 + 1)
+    inv_plan_vec = plan_irfft(csample_vec, Int(n))
     if coeffs isa AbstractVector
-        sample = Vector{T}(undef, Int(n))
-        fwd_plan = plan_rfft(sample)
-        csample = Vector{Complex{T}}(undef, Int(n) ÷ 2 + 1)
-        inv_plan = plan_irfft(csample, Int(n))
+        fwd_plan_batch = fwd_plan_vec
+        inv_plan_batch = inv_plan_vec
     else
         sample = Array{T}(undef, Int(n), size(coeffs)[2:end]...)
-        fwd_plan = plan_rfft(sample, (1,))
+        fwd_plan_batch = plan_rfft(sample, (1,))
         csample = Array{Complex{T}}(undef, size(coeffs))
-        inv_plan = plan_irfft(csample, Int(n), (1,))
+        inv_plan_batch = plan_irfft(csample, Int(n), (1,))
     end
 
     C = Complex{T}
@@ -106,8 +111,10 @@ function FFTLog(
         typeof(bias),
         typeof(kr_eff),
         typeof(coeffs),
-        typeof(fwd_plan),
-        typeof(inv_plan)
+        typeof(fwd_plan_vec),
+        typeof(inv_plan_vec),
+        typeof(fwd_plan_batch),
+        typeof(inv_plan_batch)
     }(
         kernel,
         Int(n),
@@ -116,8 +123,10 @@ function FFTLog(
         kr_eff,
         coeffs,
         bias_window_forward,
-        fwd_plan,
-        inv_plan
+        fwd_plan_vec,
+        inv_plan_vec,
+        fwd_plan_batch,
+        inv_plan_batch
     )
 end
 
@@ -164,18 +173,44 @@ function _broadcast_sample_shape(f::FFTLog, a)
     end
 end
 
-function _rfft_first_axis(f::FFTLog, a)
+function _rfft(f::FFTLog, a::AbstractVector)
+    return f.fwd_plan_vec * a
+end
+
+function _rfft(f::FFTLog, a::AbstractArray)
     if size(a) == _sample_shape(f)
-        return f.fwd_plan * a
+        return f.fwd_plan_batch * a
     end
     return plan_rfft(a, (1,)) * a
 end
 
-function _irfft_first_axis(f::FFTLog, A)
+function _irfft(f::FFTLog, A::AbstractVector)
+    return f.inv_plan_vec * A
+end
+
+function _irfft(f::FFTLog, A::AbstractArray)
     if size(A) == size(f.coeffs)
-        return f.inv_plan * A
+        return f.inv_plan_batch * A
     end
     return plan_irfft(A, f.n, (1,)) * A
+end
+
+function _multiply_coeffs(A, coeffs)
+    out_shape = Broadcast.broadcast_shape(size(A), size(coeffs))
+    if out_shape == size(A)
+        A .*= coeffs
+        return A
+    end
+    return A .* coeffs
+end
+
+function _divide_coeffs(A, coeffs)
+    out_shape = Broadcast.broadcast_shape(size(A), size(coeffs))
+    if out_shape == size(A)
+        A ./= conj.(coeffs)
+        return A
+    end
+    return A ./ conj.(coeffs)
 end
 
 # --- Bias factors ----------------------------------------------------------
@@ -225,15 +260,15 @@ end
 
 function _forward_impl(a, f::FFTLog)
     T = _real_eltype(f.coeffs)
-    sample_shape = _broadcast_sample_shape(f, a)
+    _broadcast_sample_shape(f, a)
     pl = f._bias_window_forward
     blogc = _bias_logc(f.bias, f.kr, -1)
 
-    a_biased = Array{T}(undef, sample_shape)
+    a_biased = Array{T}(undef, size(a))
     a_biased .= a .* pl
-    A = _rfft_first_axis(f, a_biased)
-    A .*= f.coeffs
-    out = _irfft_first_axis(f, A)
+    A = _rfft(f, a_biased)
+    A = _multiply_coeffs(A, f.coeffs)
+    out = _irfft(f, A)
     out_flipped = reverse(out; dims = 1)
     out_flipped .*= pl
     out_flipped .*= blogc
@@ -242,15 +277,15 @@ end
 
 function _inverse_impl(ak, f::FFTLog)
     T = _real_eltype(f.coeffs)
-    sample_shape = _broadcast_sample_shape(f, ak)
+    _broadcast_sample_shape(f, ak)
     pl_fwd = f._bias_window_forward
     blogc = _bias_logc(f.bias, f.kr, 1)
 
-    ak_biased = Array{T}(undef, sample_shape)
+    ak_biased = Array{T}(undef, size(ak))
     ak_biased .= ak ./ pl_fwd .* blogc
-    A = _rfft_first_axis(f, ak_biased)
-    A ./= conj.(f.coeffs)
-    out = _irfft_first_axis(f, A)
+    A = _rfft(f, ak_biased)
+    A = _divide_coeffs(A, f.coeffs)
+    out = _irfft(f, A)
     out_flipped = reverse(out; dims = 1)
     out_flipped ./= pl_fwd
     return out_flipped

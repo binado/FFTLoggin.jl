@@ -77,9 +77,14 @@ end
         lowring = false,
     )
     fr = @. r * exp(-r^2 / 2)
+    ak = forward(f, fr)
 
-    @test size(forward(f, reshape(fr, n, 1))) == (n, 3)
-    @test size(forward(f, repeat(fr, 1, 3))) == (n, 3)
+    @test forward(f, reshape(fr, n, 1)) ≈ ak
+    direct = forward(f, hcat(fr, 2 .* fr, 0.5 .* fr))
+    @test size(direct) == (n, 3)
+    @test direct[:, 1] ≈ ak[:, 1]
+    @test direct[:, 2] ≈ 2 .* ak[:, 2]
+    @test direct[:, 3] ≈ 0.5 .* ak[:, 3]
     @test_throws DimensionMismatch forward(f, repeat(fr, 1, 2))
     @test size(inverse(f, fr)) == (n, 3)
 

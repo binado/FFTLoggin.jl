@@ -299,7 +299,7 @@ or an array whose first axis has length `fftlog.n`. Trailing axes broadcast
 with the kernel batch axes. Pass an `FFTLogWorkspace` created from a compatible
 representative input to reuse FFT plans.
 """
-function forward(f::FFTLog, a::AbstractArray{<:Real}; workspace = nothing)
+function forward(f::FFTLog, a::AbstractArray{<:Real}; workspace::Union{Nothing, FFTLogWorkspace} = nothing)
     return _forward_impl(a, f, workspace)
 end
 
@@ -317,7 +317,7 @@ or an array whose first axis has length `fftlog.n`. Trailing axes broadcast
 with the kernel batch axes. Pass an `FFTLogWorkspace` created from a compatible
 representative input to reuse FFT plans.
 """
-function inverse(f::FFTLog, A::AbstractArray{<:Real}; workspace = nothing)
+function inverse(f::FFTLog, A::AbstractArray{<:Real}; workspace::Union{Nothing, FFTLogWorkspace} = nothing)
     return _inverse_impl(A, f, workspace)
 end
 

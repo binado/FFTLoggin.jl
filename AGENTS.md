@@ -48,4 +48,4 @@ Pull requests should include a short description of the change, the affected API
 
 ## Agent-Specific Instructions
 
-Keep edits scoped to this Julia package. Do not change generated or unrelated files to satisfy formatting. Preserve compatibility with Julia `1.10` unless the project metadata is intentionally updated.
+Keep edits scoped to this Julia package. Do not change generated or unrelated files to satisfy formatting. Preserve compatibility with Julia `1.12` unless the project metadata is intentionally updated (the repo root workspace requires Julia 1.12+).

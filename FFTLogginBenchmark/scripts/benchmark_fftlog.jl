@@ -1,5 +1,5 @@
 # Scalar vs batched-kernel `forward` timing (Fortran-style log10 grid, `f_test` spectrum).
-# Run: julia --project=scripts scripts/benchmark_fftlog.jl
+# Run: julia --project=FFTLogginBenchmark FFTLogginBenchmark/scripts/benchmark_fftlog.jl
 # Optional argv: comma-separated n, e.g. 64,128,256.
 
 using BenchmarkTools

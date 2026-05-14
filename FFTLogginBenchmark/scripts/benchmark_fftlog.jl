@@ -115,8 +115,8 @@ function main()
         )
         @assert fr ≈ fr2
 
-        b1 = @benchmark forward($f1, $fr)
-        b2 = @benchmark forward($f2, $fr2)
+        b1 = @benchmark forward!(out1, $f1, $fr, w1) setup=(w1 = FFTLogWorkspace($f1, $fr); out1 = similar($fr, FFTLoggin._broadcast_sample_shape($f1, $fr)))
+        b2 = @benchmark forward!(out2, $f2, $fr2, w2) setup=(w2 = FFTLogWorkspace($f2, $fr2); out2 = similar($fr2, FFTLoggin._broadcast_sample_shape($f2, $fr2)))
 
         t1 = prettytime(time(median(b1)))
         t2 = prettytime(time(median(b2)))

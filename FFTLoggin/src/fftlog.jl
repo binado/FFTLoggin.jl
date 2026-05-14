@@ -206,7 +206,8 @@ function FFTLogWorkspace(f::FFTLog, a::AbstractArray{<:Real}; kwargs...)
     blogc_fwd = _bias_logc(f.bias, f.kr, -1)
     blogc_inv = _bias_logc(f.bias, f.kr, 1)
 
-    input_csample = input_shape == output_shape ? output_csample : Array{Complex{T}}(undef, input_complex_shape)
+    input_csample = input_shape == output_shape ? output_csample :
+                    Array{Complex{T}}(undef, input_complex_shape)
 
     return FFTLogWorkspace{
         T,
@@ -273,7 +274,8 @@ or an array whose first axis has length `fftlog.n`. Trailing axes broadcast
 with the kernel batch axes. Pass an `FFTLogWorkspace` created from a compatible
 representative input to reuse FFT plans.
 """
-function forward(f::FFTLog, a::AbstractArray{<:Real}; workspace::Union{Nothing, FFTLogWorkspace} = nothing)
+function forward(f::FFTLog, a::AbstractArray{<:Real}; workspace::Union{
+        Nothing, FFTLogWorkspace} = nothing)
     return forward(f, a, workspace)
 end
 
@@ -297,23 +299,12 @@ to perform the transform without allocations. `out` and `a` can alias.
 function forward!(out::AbstractArray{<:Real}, f::FFTLog, a::AbstractArray{<:Real}, workspace::FFTLogWorkspace)
     _broadcast_sample_shape(f, a)
     pl = f._bias_window_forward
-    
-    # In-place bias: directly write into the real buffer that has the broadcasted shape
     workspace.buf_real .= a .* pl
-    
-    # RFFT: from broadcasted real buffer to complex out buffer
     mul!(workspace.buf_complex_out, workspace.output_rfft_plan, workspace.buf_real)
-    
-    # In-place coefficient multiplication
     workspace.buf_complex_out .= workspace.buf_complex_out .* f.coeffs
-    
-    # IRFFT: from complex out buffer directly to user output
     mul!(out, workspace.output_irfft_plan, workspace.buf_complex_out)
-    
-    # In-place post-processing
     reverse!(out; dims = 1)
     out .= out .* pl .* workspace.buf_blogc_fwd
-    
     return out
 end
 
@@ -326,7 +317,8 @@ or an array whose first axis has length `fftlog.n`. Trailing axes broadcast
 with the kernel batch axes. Pass an `FFTLogWorkspace` created from a compatible
 representative input to reuse FFT plans.
 """
-function inverse(f::FFTLog, A::AbstractArray{<:Real}; workspace::Union{Nothing, FFTLogWorkspace} = nothing)
+function inverse(f::FFTLog, A::AbstractArray{<:Real}; workspace::Union{
+        Nothing, FFTLogWorkspace} = nothing)
     return inverse(f, A, workspace)
 end
 
@@ -350,22 +342,11 @@ to perform the transform without allocations. `out` and `A` can alias.
 function inverse!(out::AbstractArray{<:Real}, f::FFTLog, ak::AbstractArray{<:Real}, workspace::FFTLogWorkspace)
     _broadcast_sample_shape(f, ak)
     pl_fwd = f._bias_window_forward
-    
-    # In-place bias: directly write into the real buffer that has the broadcasted shape
     workspace.buf_real .= ak ./ pl_fwd .* workspace.buf_blogc_inv
-    
-    # RFFT: from broadcasted real buffer to complex out buffer
     mul!(workspace.buf_complex_out, workspace.output_rfft_plan, workspace.buf_real)
-    
-    # In-place coefficient division
     workspace.buf_complex_out .= workspace.buf_complex_out ./ conj.(f.coeffs)
-    
-    # IRFFT: from complex out buffer directly to user output
     mul!(out, workspace.output_irfft_plan, workspace.buf_complex_out)
-    
-    # In-place post-processing
     reverse!(out; dims = 1)
     out .= out ./ pl_fwd
-    
     return out
 end

@@ -24,7 +24,7 @@ function _build_fftlog_scalar(
         q,
         kr,
         lowring::Bool,
-        mu_fr::Real,
+        mu_fr::Real
 )
     _, dlog, fr = _fortran_style_arrays(n, log10rmin, log10rmax, mu_fr)
     f = redirect_stderr(devnull) do
@@ -34,7 +34,7 @@ function _build_fftlog_scalar(
             dlog = dlog,
             bias = q,
             kr = kr,
-            lowring = lowring,
+            lowring = lowring
         )
     end
     return f, fr
@@ -48,7 +48,7 @@ function _build_fftlog_array_kernel(
         q,
         kr,
         lowring::Bool,
-        mu_fr::Real,
+        mu_fr::Real
 )
     _, dlog, fr = _fortran_style_arrays(n, log10rmin, log10rmax, mu_fr)
     f = redirect_stderr(devnull) do
@@ -58,13 +58,13 @@ function _build_fftlog_array_kernel(
             dlog = dlog,
             bias = q,
             kr = kr,
-            lowring = lowring,
+            lowring = lowring
         )
     end
     return f, fr
 end
 
-function _parse_ns(arg::Union{Nothing,String})
+function _parse_ns(arg::Union{Nothing, String})
     arg === nothing && return Int[64, 128, 256, 512, 1024]
     parts = split(arg, ','; keepempty = false)
     isempty(parts) && return Int[64, 128, 256, 512, 1024]
@@ -93,7 +93,8 @@ function main()
     println(repeat("-", 92))
 
     for n in ns
-        f1, fr = _build_fftlog_scalar(
+        f1,
+        fr = _build_fftlog_scalar(
             n,
             log10rmin,
             log10rmax,
@@ -101,9 +102,10 @@ function main()
             q,
             kr,
             lowring,
-            mu_fr,
+            mu_fr
         )
-        f2, fr2 = _build_fftlog_array_kernel(
+        f2,
+        fr2 = _build_fftlog_array_kernel(
             n,
             log10rmin,
             log10rmax,
@@ -111,12 +113,15 @@ function main()
             q,
             kr,
             lowring,
-            mu_fr,
+            mu_fr
         )
         @assert fr ≈ fr2
 
-        b1 = @benchmark forward!(out1, $f1, $fr, w1) setup=(w1 = FFTLogWorkspace($f1, $fr); out1 = similar($fr, FFTLoggin._broadcast_sample_shape($f1, $fr)))
-        b2 = @benchmark forward!(out2, $f2, $fr2, w2) setup=(w2 = FFTLogWorkspace($f2, $fr2); out2 = similar($fr2, FFTLoggin._broadcast_sample_shape($f2, $fr2)))
+        b1 = @benchmark forward!(out1, $f1, $fr, w1) setup=(w1 = FFTLogWorkspace($f1, $fr);
+            out1 = similar($fr, FFTLoggin._broadcast_sample_shape($f1, $fr)))
+        b2 = @benchmark forward!(out2, $f2, $fr2, w2) setup=(
+            w2 = FFTLogWorkspace($f2, $fr2);
+            out2 = similar($fr2, FFTLoggin._broadcast_sample_shape($f2, $fr2)))
 
         t1 = prettytime(time(median(b1)))
         t2 = prettytime(time(median(b2)))

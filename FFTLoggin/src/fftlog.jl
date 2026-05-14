@@ -341,10 +341,10 @@ function _forward_impl(a, f::FFTLog, workspace)
     A = _rfft(f, a_biased, workspace)
     A = _multiply_coeffs(A, f.coeffs)
     out = _irfft(f, A, workspace)
-    out_flipped = reverse(out; dims = 1)
-    out_flipped .*= pl
-    out_flipped .*= blogc
-    return out_flipped
+    reverse!(out; dims = 1)
+    out .*= pl
+    out .*= blogc
+    return out
 end
 
 function _inverse_impl(ak, f::FFTLog, workspace)
@@ -358,7 +358,7 @@ function _inverse_impl(ak, f::FFTLog, workspace)
     A = _rfft(f, ak_biased, workspace)
     A = _divide_coeffs(A, f.coeffs)
     out = _irfft(f, A, workspace)
-    out_flipped = reverse(out; dims = 1)
-    out_flipped ./= pl_fwd
-    return out_flipped
+    reverse!(out; dims = 1)
+    out ./= pl_fwd
+    return out
 end

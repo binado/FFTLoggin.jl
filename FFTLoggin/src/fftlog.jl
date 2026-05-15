@@ -33,7 +33,8 @@ when kernel batch axes broadcast with the input.
 """
 struct FFTLogWorkspace{
     T <: AbstractFloat, NI, NO, IRP, ORP, OIP,
-    BR <: AbstractArray{T, NO},
+    BRI <: AbstractArray{T, NI},
+    BRO <: AbstractArray{T, NO},
     BCI <: AbstractArray{Complex{T}, NI},
     BCO <: AbstractArray{Complex{T}, NO},
     BF, BI
@@ -46,7 +47,8 @@ struct FFTLogWorkspace{
     input_rfft_plan::IRP
     output_rfft_plan::ORP
     output_irfft_plan::OIP
-    buf_real::BR
+    buf_real::BRI
+    buf_real_out::BRO
     buf_complex_in::BCI
     buf_complex_out::BCO
     buf_blogc_fwd::BF
@@ -196,6 +198,8 @@ function FFTLogWorkspace(f::FFTLog, a::AbstractArray{<:Real}; kwargs...)
     output_sample = input_shape == output_shape ? input_sample :
                     Array{T}(undef, output_shape)
     output_csample = Array{Complex{T}}(undef, output_complex_shape)
+    input_csample = input_shape == output_shape ? output_csample :
+                    Array{Complex{T}}(undef, input_complex_shape)
 
     input_rfft_plan = _plan_rfft_axis1(input_sample; kwargs...)
     output_rfft_plan = input_shape == output_shape ?
@@ -206,9 +210,6 @@ function FFTLogWorkspace(f::FFTLog, a::AbstractArray{<:Real}; kwargs...)
     blogc_fwd = _bias_logc(f.bias, f.kr, -1)
     blogc_inv = _bias_logc(f.bias, f.kr, 1)
 
-    input_csample = input_shape == output_shape ? output_csample :
-                    Array{Complex{T}}(undef, input_complex_shape)
-
     return FFTLogWorkspace{
         T,
         length(input_shape),
@@ -216,6 +217,7 @@ function FFTLogWorkspace(f::FFTLog, a::AbstractArray{<:Real}; kwargs...)
         typeof(input_rfft_plan),
         typeof(output_rfft_plan),
         typeof(output_irfft_plan),
+        typeof(input_sample),
         typeof(output_sample),
         typeof(input_csample),
         typeof(output_csample),
@@ -230,12 +232,35 @@ function FFTLogWorkspace(f::FFTLog, a::AbstractArray{<:Real}; kwargs...)
         input_rfft_plan,
         output_rfft_plan,
         output_irfft_plan,
+        input_sample,
         output_sample,
         input_csample,
         output_csample,
         blogc_fwd,
         blogc_inv
     )
+end
+
+function _workspace_path(f::FFTLog, a::AbstractArray, workspace::FFTLogWorkspace)
+    out_shape = _broadcast_sample_shape(f, a)
+    out_shape == workspace.output_shape ||
+        throw(DimensionMismatch(
+            "workspace output shape $(workspace.output_shape) does not match input output shape $(out_shape)"
+        ))
+    input_shape = size(a)
+    input_shape == workspace.input_shape && return :input
+    input_shape == workspace.output_shape && return :output
+    throw(DimensionMismatch(
+        "input shape $(input_shape) is incompatible with workspace input shape $(workspace.input_shape) " *
+        "and output shape $(workspace.output_shape)"
+    ))
+end
+
+function _check_workspace_output(out::AbstractArray, workspace::FFTLogWorkspace)
+    size(out) == workspace.output_shape ||
+        throw(DimensionMismatch(
+            "output shape $(size(out)) does not match workspace output shape $(workspace.output_shape)"
+        ))
 end
 
 # --- Bias factors ----------------------------------------------------------
@@ -297,11 +322,18 @@ Mutating forward FFTLog transform. Uses the pre-allocated buffers in `workspace`
 to perform the transform without allocations. `out` and `a` can alias.
 """
 function forward!(out::AbstractArray{<:Real}, f::FFTLog, a::AbstractArray{<:Real}, workspace::FFTLogWorkspace)
-    _broadcast_sample_shape(f, a)
+    path = _workspace_path(f, a, workspace)
+    _check_workspace_output(out, workspace)
     pl = f._bias_window_forward
-    workspace.buf_real .= a .* pl
-    mul!(workspace.buf_complex_out, workspace.output_rfft_plan, workspace.buf_real)
-    workspace.buf_complex_out .= workspace.buf_complex_out .* f.coeffs
+    if path === :input
+        workspace.buf_real .= a .* pl
+        mul!(workspace.buf_complex_in, workspace.input_rfft_plan, workspace.buf_real)
+        workspace.buf_complex_out .= workspace.buf_complex_in .* f.coeffs
+    else
+        workspace.buf_real_out .= a .* pl
+        mul!(workspace.buf_complex_out, workspace.output_rfft_plan, workspace.buf_real_out)
+        workspace.buf_complex_out .= workspace.buf_complex_out .* f.coeffs
+    end
     mul!(out, workspace.output_irfft_plan, workspace.buf_complex_out)
     reverse!(out; dims = 1)
     out .= out .* pl .* workspace.buf_blogc_fwd
@@ -340,11 +372,18 @@ Mutating inverse FFTLog transform. Uses the pre-allocated buffers in `workspace`
 to perform the transform without allocations. `out` and `A` can alias.
 """
 function inverse!(out::AbstractArray{<:Real}, f::FFTLog, ak::AbstractArray{<:Real}, workspace::FFTLogWorkspace)
-    _broadcast_sample_shape(f, ak)
+    path = _workspace_path(f, ak, workspace)
+    _check_workspace_output(out, workspace)
     pl_fwd = f._bias_window_forward
-    workspace.buf_real .= ak ./ pl_fwd .* workspace.buf_blogc_inv
-    mul!(workspace.buf_complex_out, workspace.output_rfft_plan, workspace.buf_real)
-    workspace.buf_complex_out .= workspace.buf_complex_out ./ conj.(f.coeffs)
+    if path === :input
+        workspace.buf_real .= ak ./ pl_fwd .* workspace.buf_blogc_inv
+        mul!(workspace.buf_complex_in, workspace.input_rfft_plan, workspace.buf_real)
+        workspace.buf_complex_out .= workspace.buf_complex_in ./ conj.(f.coeffs)
+    else
+        workspace.buf_real_out .= ak ./ pl_fwd .* workspace.buf_blogc_inv
+        mul!(workspace.buf_complex_out, workspace.output_rfft_plan, workspace.buf_real_out)
+        workspace.buf_complex_out .= workspace.buf_complex_out ./ conj.(f.coeffs)
+    end
     mul!(out, workspace.output_irfft_plan, workspace.buf_complex_out)
     reverse!(out; dims = 1)
     out .= out ./ pl_fwd

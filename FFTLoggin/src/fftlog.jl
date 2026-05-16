@@ -30,6 +30,11 @@ The representative input `a` must be valid for `forward(fftlog, a)`. Keyword
 arguments are forwarded to FFTW planning. The workspace caches plans for the
 representative input shape and for the transform output shape, which may differ
 when kernel batch axes broadcast with the input.
+
+A workspace is tied to one `FFTLog` and one representative shape pattern.
+Inputs passed later must match either the representative input shape or the
+cached output shape, and `out` passed to `forward!` or `inverse!` must match the
+cached output shape. `out` and the input may alias.
 """
 struct FFTLogWorkspace{
     T <: AbstractFloat, NI, NO, IRP, ORP, OIP,
@@ -63,7 +68,7 @@ function _compute_coeffs(kernel::AbstractKernel, n::Integer, kr, dlog, bias)
     angle = (2π * im / n) .* m ./ dlog
     s = angle .+ 1 .+ bias
     c = kernel(s)
-    logc = log.(kr)
+    logc = _batch_param_axis1(log.(kr))
     c = c .* exp.(.-angle .* logc)
     if iseven(n)
         # Realify Nyquist along the first axis.
@@ -82,7 +87,7 @@ end
 
 function _snap_lowring(kernel::AbstractKernel, kr, dlog, bias)
     logc_opt = optimal_logcenter(kernel, dlog, bias)
-    logc = log.(kr)
+    logc = _batch_param_axis1(log.(kr))
     s = (logc .- logc_opt) ./ dlog
     return exp.(logc_opt .+ round.(s) .* dlog)
 end
@@ -285,7 +290,7 @@ function _bias_logc(bias, kr::Number, sign::Int)
 end
 
 function _bias_logc(bias, kr::AbstractArray, sign::Int)
-    return exp.(sign .* bias .* log.(kr))
+    return exp.(sign .* bias .* _batch_param_axis1(log.(kr)))
 end
 
 # --- Forward / Inverse ------------------------------------------------------

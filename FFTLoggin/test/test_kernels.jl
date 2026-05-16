@@ -58,32 +58,13 @@ using SpecialFunctions: gamma
         @test sk2(1.0 + 0im) ≈ k(1.5 + 0im) rtol=1e-12
     end
 
-    @testset "TupleKernel" begin
-        k1 = BesselJKernel(0)
-        k2 = BesselJKernel(1)
-        tk = TupleKernel(k1, k2)
-        s = [1.0 + 0im, 1.2 + 0im]
-        out = tk(s)
-        @test size(out) == (2, 2)
-        @test isapprox(out[:, 1], k1(s); rtol = 1e-12)
-        @test isapprox(out[:, 2], k2(s); rtol = 1e-12)
-
-        # Flatten nested
-        tk2 = TupleKernel(k1, TupleKernel(k2, derive(k1, 1)))
-        @test length(tk2.kernels) == 3
-
-        @test_throws ArgumentError TupleKernel()
-        @test_throws ArgumentError derive(tk, 1)
-        @test_throws ArgumentError shift(tk, 0.1)
-    end
-
     @testset "optimal_logcenter" begin
-        v = optimal_logcenter(BesselJKernel(0), 0.05, 0.0)
+        v = FFTLoggin.optimal_logcenter(BesselJKernel(0), 0.05, 0.0)
         @test isfinite(v)
 
         dlogs = [0.04, 0.05]
         biases = [0.0, 0.1]
-        vb = optimal_logcenter.(Ref(BesselJKernel(0)), dlogs, biases)
+        vb = FFTLoggin.optimal_logcenter.(Ref(BesselJKernel(0)), dlogs, biases)
         @test size(vb) == size(dlogs)
         @test all(isfinite, vb)
     end

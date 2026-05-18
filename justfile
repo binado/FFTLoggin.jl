@@ -16,6 +16,11 @@ generate-fortran-benchmarks:
 benchmark:
     julia --project=FFTLogginBenchmark FFTLogginBenchmark/scripts/benchmark_fftlog.jl
 
+# Build package documentation locally with Documenter.
+docs:
+    julia --project=docs -e 'using Pkg; Pkg.instantiate()'
+    julia --project=docs docs/make.jl
+
 # Format Julia sources under this repo (uses .JuliaFormatter.toml when present).
 fmt:
     julia -e 'using JuliaFormatter; format(".")'

@@ -1,2 +1,2 @@
 [workspace]
-projects = ["FFTLoggin", "FFTLogginBenchmark"]
+projects = ["FFTLoggin", "FFTLogginBenchmark", "docs"]

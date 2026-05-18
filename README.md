@@ -1,5 +1,9 @@
 # FFTLoggin.jl
 
+<p align="center">
+  <img src="docs/src/assets/logo.svg" alt="FFTLoggin.jl Logo" width="600"/>
+</p>
+
 Julia port of the [`fftloggin`](https://github.com/binado/fftloggin) Python
 package — a vectorized FFTLog implementation for fast Hankel transforms.
 

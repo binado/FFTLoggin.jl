@@ -34,11 +34,36 @@ jobs:
         with:
           version: ${{ matrix.version }}
 
+      - uses: fortran-lang/setup-fortran@v1
+        with:
+          compiler: gcc
+          version: 13
+
       - uses: julia-actions/cache@v2
+
+      - name: Cache Fortran benchmark artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            FFTLoggin/test/benchmark
+            FFTLoggin/test/benchmarks
+          key: fortran-benchmarks-${{ runner.os }}-${{ hashFiles('FFTLoggin/test/generate_fortran_benchmarks.jl') }}
 
       # Workspace layout requires Julia 1.12+; root Manifest.toml pins FFTLoggin + FFTLogginBenchmark.
       - name: Instantiate Julia workspace
         run: julia --color=yes --depwarn=yes --project=. -e 'using Pkg; Pkg.instantiate()'
+
+      - name: Generate Fortran benchmark fixtures
+        run: julia --color=yes --depwarn=yes --project=. FFTLoggin/test/generate_fortran_benchmarks.jl
+
+      - name: Verify Fortran benchmark fixtures
+        run: |
+          count=$(find FFTLoggin/test/benchmarks -type f -name 'benchmark_*.txt' 2>/dev/null | wc -l | tr -d ' ')
+          echo "Found $count Fortran benchmark files"
+          if [ "$count" -ne "216" ]; then
+            echo "ERROR: Expected 216 Fortran benchmark files, found $count"
+            exit 1
+          fi
 
       - name: Run FFTLoggin tests
         run: julia --color=yes --depwarn=yes --project=. -e 'using Pkg; Pkg.test("FFTLoggin"; coverage=true)'

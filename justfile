@@ -8,6 +8,10 @@ resolve project=".":
 test:
     julia --project=FFTLoggin -e 'using Pkg; Pkg.test()'
 
+# Generate Fortran reference fixtures used by FFTLoggin tests.
+generate-fortran-benchmarks:
+    julia --project=. FFTLoggin/test/generate_fortran_benchmarks.jl
+
 # BenchmarkTools driver for scalar vs batched FFTLog forward (instantiate FFTLogginBenchmark first).
 benchmark:
     julia --project=FFTLogginBenchmark FFTLogginBenchmark/scripts/benchmark_fftlog.jl

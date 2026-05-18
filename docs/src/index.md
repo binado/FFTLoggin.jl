@@ -2,7 +2,7 @@
 
 ```@raw html
 <p align="center">
-  <img src="assets/logo.svg" alt="FFTLoggin.jl Logo" width="600"/>
+  <img src="assets/logo-banner.svg" alt="FFTLoggin.jl Logo" width="600"/>
 </p>
 ```
 

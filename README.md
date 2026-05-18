@@ -1,7 +1,7 @@
 # FFTLoggin.jl
 
 <p align="center">
-  <img src="docs/src/assets/logo.svg" alt="FFTLoggin.jl Logo" width="600"/>
+  <img src="docs/src/assets/logo-banner.svg" alt="FFTLoggin.jl Logo" width="600"/>
 </p>
 
 Julia port of the [`fftloggin`](https://github.com/binado/fftloggin) Python

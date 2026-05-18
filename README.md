@@ -3,6 +3,8 @@
 Julia port of the [`fftloggin`](https://github.com/binado/fftloggin) Python
 package — a vectorized FFTLog implementation for fast Hankel transforms.
 
+[Documentation](https://binado.github.io/FFTLoggin.jl/dev/)
+
 > **Sample-axis convention.** The transform/sample axis is the **first** axis
 > (Julia is column-major). This is the opposite of the Python package, which
 > uses the last axis.

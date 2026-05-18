@@ -27,7 +27,7 @@ function domain end
 
 Return `(lo, hi)`, the strip of convergence of the kernel `k`.
 
-This is a descriptive alias for [`domain`](@ref).
+This is a descriptive alias for `domain(k)`.
 """
 convergence_strip(k::AbstractKernel) = domain(k)
 

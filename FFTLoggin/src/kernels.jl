@@ -6,7 +6,8 @@ Base type for Mellin transform kernels.
 A concrete kernel `K` must implement:
 
   * `(k::K)(s)` — evaluate the Mellin transform at `s` (scalar or array).
-  * `domain(k::K)` — return `(lo, hi)` bounds of the strip of convergence.
+  * `domain(k::K)` — return `(lo, hi)` bounds of the strip of convergence,
+    with bounds broadcast-compatible with `real.(s)`.
 
 It may override `isindomain(k, s)`. Default `isindomain` checks that the real
 part of `s` lies in `[lo, hi]` and reduces to a scalar `Bool`.
@@ -41,6 +42,7 @@ mellin(k::AbstractKernel, s) = k(s)
     isindomain(k::AbstractKernel, s) -> Bool
 
 Return `true` if all of `real.(s)` lie within the strip of convergence of `k`.
+`s` may be a scalar or array-like value.
 """
 function isindomain(k::AbstractKernel, s)
     lo, hi = domain(k)
@@ -71,12 +73,10 @@ struct BesselJKernel{T} <: AbstractKernel
     μ::T
 end
 
-domain(k::BesselJKernel) = (-k.μ, oftype(_one_like(k.μ), 1.5) .* _ones_like(k.μ))
+domain(k::BesselJKernel) = (-k.μ, _besselj_domain_hi(k.μ))
 
-_one_like(x::Real) = float(x)
-_one_like(x::AbstractArray) = float(zero(eltype(x)))
-_ones_like(x::Real) = one(float(x))
-_ones_like(x::AbstractArray) = ones(float(eltype(x)), size(x))
+_besselj_domain_hi(μ::Real) = oftype(float(μ), 1.5)
+_besselj_domain_hi(μ::AbstractArray) = fill(oftype(float(zero(eltype(μ))), 1.5), size(μ))
 
 function (k::BesselJKernel)(s)
     return _besselj_call(k.μ, s)
@@ -106,11 +106,7 @@ struct SphericalBesselJKernel{T, K <: BesselJKernel} <: AbstractKernel
 end
 
 function SphericalBesselJKernel(ℓ)
-    if ℓ isa AbstractArray
-        return SphericalBesselJKernel(ℓ, BesselJKernel(ℓ .+ 0.5))
-    else
-        return SphericalBesselJKernel(ℓ, BesselJKernel(ℓ + 0.5))
-    end
+    return SphericalBesselJKernel(ℓ, BesselJKernel(ℓ .+ 0.5))
 end
 
 function domain(k::SphericalBesselJKernel)
@@ -199,63 +195,6 @@ end
 end
 
 # ---------------------------------------------------------------------------
-# TupleKernel
-# ---------------------------------------------------------------------------
-
-"""
-    TupleKernel(kernels...)
-
-Type-stable composition of kernels. Forward/inverse with a vector input
-produces a `Matrix` whose columns are the per-kernel results. Empty tuples are
-disallowed; nested `TupleKernel`s are flattened at construction.
-"""
-struct TupleKernel{Ks <: Tuple{Vararg{AbstractKernel}}} <: AbstractKernel
-    kernels::Ks
-end
-
-function TupleKernel(ks::AbstractKernel...)
-    isempty(ks) && throw(ArgumentError("TupleKernel requires at least one kernel"))
-    flat = _flatten_tuple_kernels(ks)
-    return TupleKernel{typeof(flat)}(flat)
-end
-
-@inline _flatten_tk(acc::Tuple) = acc
-@inline _flatten_tk(acc::Tuple, k::AbstractKernel, rest...) = _flatten_tk((acc..., k), rest...)
-@inline _flatten_tk(acc::Tuple, k::TupleKernel, rest...) = _flatten_tk(
-    (
-        acc..., k.kernels...), rest...)
-@inline _flatten_tuple_kernels(ks::Tuple) = _flatten_tk((), ks...)
-
-function domain(k::TupleKernel)
-    los = map(x -> domain(x)[1], k.kernels)
-    his = map(x -> domain(x)[2], k.kernels)
-    return los, his
-end
-
-function isindomain(k::TupleKernel, s)
-    return all(isindomain(kk, s) for kk in k.kernels)
-end
-
-function (k::TupleKernel)(s)
-    parts = map(kk -> kk(s), k.kernels)
-    # Stack along a new last axis so the per-kernel batch dimension is trailing.
-    return _stack_kernel_outputs(parts)
-end
-
-_stack_kernel_outputs(parts::Tuple{Vararg{Number}}) = collect(parts)
-function _stack_kernel_outputs(parts::Tuple)
-    # All elements either scalars or arrays; broadcast to common shape and stack.
-    bs = Broadcast.broadcast_shape(map(size, parts)...)
-    arrs = map(
-        p -> p isa AbstractArray ?
-             (size(p) == bs ? p : broadcast(identity, p, ones(eltype(p), bs))) :
-             fill(p, bs),
-        parts
-    )
-    return cat(arrs...; dims = ndims(arrs[1]) + 1)
-end
-
-# ---------------------------------------------------------------------------
 # derive / shift helpers
 # ---------------------------------------------------------------------------
 
@@ -269,15 +208,6 @@ function derive(k::AbstractKernel, order::Integer = 1)
     order < 0 && throw(ArgumentError("derive order must be >= 0, got $order"))
     order == 0 && return k
     return DerivativeKernel(k, Int(order))
-end
-
-function derive(::TupleKernel, order::Integer = 1)
-    throw(
-        ArgumentError(
-        "derive on TupleKernel is not defined; construct " *
-        "TupleKernel(derive.(kernels, order)...) explicitly",
-    ),
-    )
 end
 
 """
@@ -298,15 +228,6 @@ function shift(k::ShiftedKernel, ν)
         return k
     end
     return ShiftedKernel(k.base, k.ν .+ ν)
-end
-
-function shift(::TupleKernel, ν)
-    throw(
-        ArgumentError(
-        "shift on TupleKernel is not defined; construct " *
-        "TupleKernel(shift.(kernels, ν)...) explicitly",
-    ),
-    )
 end
 
 # ---------------------------------------------------------------------------

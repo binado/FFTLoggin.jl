@@ -30,9 +30,20 @@ The representative input `a` must be valid for `forward(fftlog, a)`. Keyword
 arguments are forwarded to FFTW planning. The workspace caches plans for the
 representative input shape and for the transform output shape, which may differ
 when kernel batch axes broadcast with the input.
+
+A workspace is tied to one `FFTLog` and one representative shape pattern.
+Inputs passed later must match either the representative input shape or the
+cached output shape, and `out` passed to `forward!` or `inverse!` must match the
+cached output shape. `out` and the input may alias.
 """
 struct FFTLogWorkspace{
-    T <: AbstractFloat, NI, NO, IRP, ORP, OIP}
+    T <: AbstractFloat, NI, NO, IRP, ORP, OIP,
+    BRI <: AbstractArray{T, NI},
+    BRO <: AbstractArray{T, NO},
+    BCI <: AbstractArray{Complex{T}, NI},
+    BCO <: AbstractArray{Complex{T}, NO},
+    BF, BI
+}
     n::Int
     input_shape::NTuple{NI, Int}
     output_shape::NTuple{NO, Int}
@@ -41,6 +52,12 @@ struct FFTLogWorkspace{
     input_rfft_plan::IRP
     output_rfft_plan::ORP
     output_irfft_plan::OIP
+    buf_real::BRI
+    buf_real_out::BRO
+    buf_complex_in::BCI
+    buf_complex_out::BCO
+    buf_blogc_fwd::BF
+    buf_blogc_inv::BI
 end
 
 # --- Coefficient computation -----------------------------------------------
@@ -51,7 +68,7 @@ function _compute_coeffs(kernel::AbstractKernel, n::Integer, kr, dlog, bias)
     angle = (2π * im / n) .* m ./ dlog
     s = angle .+ 1 .+ bias
     c = kernel(s)
-    logc = log.(kr)
+    logc = _batch_param_axis1(log.(kr))
     c = c .* exp.(.-angle .* logc)
     if iseven(n)
         # Realify Nyquist along the first axis.
@@ -70,7 +87,7 @@ end
 
 function _snap_lowring(kernel::AbstractKernel, kr, dlog, bias)
     logc_opt = optimal_logcenter(kernel, dlog, bias)
-    logc = log.(kr)
+    logc = _batch_param_axis1(log.(kr))
     s = (logc .- logc_opt) ./ dlog
     return exp.(logc_opt .+ round.(s) .* dlog)
 end
@@ -186,6 +203,8 @@ function FFTLogWorkspace(f::FFTLog, a::AbstractArray{<:Real}; kwargs...)
     output_sample = input_shape == output_shape ? input_sample :
                     Array{T}(undef, output_shape)
     output_csample = Array{Complex{T}}(undef, output_complex_shape)
+    input_csample = input_shape == output_shape ? output_csample :
+                    Array{Complex{T}}(undef, input_complex_shape)
 
     input_rfft_plan = _plan_rfft_axis1(input_sample; kwargs...)
     output_rfft_plan = input_shape == output_shape ?
@@ -193,13 +212,22 @@ function FFTLogWorkspace(f::FFTLog, a::AbstractArray{<:Real}; kwargs...)
                        _plan_rfft_axis1(output_sample; kwargs...)
     output_irfft_plan = _plan_irfft_axis1(output_csample, f.n; kwargs...)
 
+    blogc_fwd = _bias_logc(f.bias, f.kr, -1)
+    blogc_inv = _bias_logc(f.bias, f.kr, 1)
+
     return FFTLogWorkspace{
         T,
         length(input_shape),
         length(output_shape),
         typeof(input_rfft_plan),
         typeof(output_rfft_plan),
-        typeof(output_irfft_plan)
+        typeof(output_irfft_plan),
+        typeof(input_sample),
+        typeof(output_sample),
+        typeof(input_csample),
+        typeof(output_csample),
+        typeof(blogc_fwd),
+        typeof(blogc_inv)
     }(
         f.n,
         input_shape,
@@ -208,63 +236,36 @@ function FFTLogWorkspace(f::FFTLog, a::AbstractArray{<:Real}; kwargs...)
         output_complex_shape,
         input_rfft_plan,
         output_rfft_plan,
-        output_irfft_plan
+        output_irfft_plan,
+        input_sample,
+        output_sample,
+        input_csample,
+        output_csample,
+        blogc_fwd,
+        blogc_inv
     )
 end
 
-function _rfft(f::FFTLog, a::AbstractArray, ::Nothing)
-    return _rfft_axis1(a)
+function _workspace_path(f::FFTLog, a::AbstractArray, workspace::FFTLogWorkspace)
+    out_shape = _broadcast_sample_shape(f, a)
+    out_shape == workspace.output_shape ||
+        throw(DimensionMismatch(
+            "workspace output shape $(workspace.output_shape) does not match input output shape $(out_shape)"
+        ))
+    input_shape = size(a)
+    input_shape == workspace.input_shape && return :input
+    input_shape == workspace.output_shape && return :output
+    throw(DimensionMismatch(
+        "input shape $(input_shape) is incompatible with workspace input shape $(workspace.input_shape) " *
+        "and output shape $(workspace.output_shape)"
+    ))
 end
 
-function _rfft(f::FFTLog, a::AbstractArray, workspace::FFTLogWorkspace)
-    workspace.n == f.n ||
-        throw(DimensionMismatch("workspace n=$(workspace.n) does not match FFTLog n=$(f.n)"))
-    if size(a) == workspace.input_shape
-        return workspace.input_rfft_plan * a
-    elseif size(a) == workspace.output_shape
-        return workspace.output_rfft_plan * a
-    end
-    throw(
-        DimensionMismatch(
-        "workspace real shape mismatch: expected $(workspace.input_shape) or " *
-        "$(workspace.output_shape), got $(size(a))",
-    ),
-    )
-end
-
-function _irfft(f::FFTLog, A::AbstractArray, ::Nothing)
-    return _irfft_axis1(A, f.n)
-end
-
-function _irfft(f::FFTLog, A::AbstractArray, workspace::FFTLogWorkspace)
-    workspace.n == f.n ||
-        throw(DimensionMismatch("workspace n=$(workspace.n) does not match FFTLog n=$(f.n)"))
-    size(A) == workspace.output_complex_shape ||
-        throw(
-            DimensionMismatch(
-            "workspace complex shape mismatch: expected " *
-            "$(workspace.output_complex_shape), got $(size(A))",
-        ),
-        )
-    return workspace.output_irfft_plan * A
-end
-
-function _multiply_coeffs(A, coeffs)
-    out_shape = Broadcast.broadcast_shape(size(A), size(coeffs))
-    if out_shape == size(A)
-        A .*= coeffs
-        return A
-    end
-    return A .* coeffs
-end
-
-function _divide_coeffs(A, coeffs)
-    out_shape = Broadcast.broadcast_shape(size(A), size(coeffs))
-    if out_shape == size(A)
-        A ./= conj.(coeffs)
-        return A
-    end
-    return A ./ conj.(coeffs)
+function _check_workspace_output(out::AbstractArray, workspace::FFTLogWorkspace)
+    size(out) == workspace.output_shape ||
+        throw(DimensionMismatch(
+            "output shape $(size(out)) does not match workspace output shape $(workspace.output_shape)"
+        ))
 end
 
 # --- Bias factors ----------------------------------------------------------
@@ -289,7 +290,7 @@ function _bias_logc(bias, kr::Number, sign::Int)
 end
 
 function _bias_logc(bias, kr::AbstractArray, sign::Int)
-    return exp.(sign .* bias .* log.(kr))
+    return exp.(sign .* bias .* _batch_param_axis1(log.(kr)))
 end
 
 # --- Forward / Inverse ------------------------------------------------------
@@ -303,13 +304,45 @@ or an array whose first axis has length `fftlog.n`. Trailing axes broadcast
 with the kernel batch axes. Pass an `FFTLogWorkspace` created from a compatible
 representative input to reuse FFT plans.
 """
-function forward(f::FFTLog, a::AbstractArray{<:Real}; workspace::Union{Nothing, FFTLogWorkspace} = nothing)
-    return _forward_impl(a, f, workspace)
+function forward(f::FFTLog, a::AbstractArray{<:Real}; workspace::Union{
+        Nothing, FFTLogWorkspace} = nothing)
+    return forward(f, a, workspace)
 end
 
-function forward(f::FFTLog, a::AbstractArray{<:Real}, workspace::Union{
-        Nothing, FFTLogWorkspace})
-    return _forward_impl(a, f, workspace)
+function forward(f::FFTLog, a::AbstractArray{<:Real}, ::Nothing)
+    workspace = FFTLogWorkspace(f, a)
+    return forward(f, a, workspace)
+end
+
+function forward(f::FFTLog, a::AbstractArray{<:Real}, workspace::FFTLogWorkspace)
+    out_shape = _broadcast_sample_shape(f, a)
+    out = Array{_real_eltype(f.coeffs)}(undef, out_shape)
+    return forward!(out, f, a, workspace)
+end
+
+"""
+    forward!(out, fftlog, a, workspace) -> out
+
+Mutating forward FFTLog transform. Uses the pre-allocated buffers in `workspace`
+to perform the transform without allocations. `out` and `a` can alias.
+"""
+function forward!(out::AbstractArray{<:Real}, f::FFTLog, a::AbstractArray{<:Real}, workspace::FFTLogWorkspace)
+    path = _workspace_path(f, a, workspace)
+    _check_workspace_output(out, workspace)
+    pl = f._bias_window_forward
+    if path === :input
+        workspace.buf_real .= a .* pl
+        mul!(workspace.buf_complex_in, workspace.input_rfft_plan, workspace.buf_real)
+        workspace.buf_complex_out .= workspace.buf_complex_in .* f.coeffs
+    else
+        workspace.buf_real_out .= a .* pl
+        mul!(workspace.buf_complex_out, workspace.output_rfft_plan, workspace.buf_real_out)
+        workspace.buf_complex_out .= workspace.buf_complex_out .* f.coeffs
+    end
+    mul!(out, workspace.output_irfft_plan, workspace.buf_complex_out)
+    reverse!(out; dims = 1)
+    out .= out .* pl .* workspace.buf_blogc_fwd
+    return out
 end
 
 """
@@ -321,44 +354,43 @@ or an array whose first axis has length `fftlog.n`. Trailing axes broadcast
 with the kernel batch axes. Pass an `FFTLogWorkspace` created from a compatible
 representative input to reuse FFT plans.
 """
-function inverse(f::FFTLog, A::AbstractArray{<:Real}; workspace::Union{Nothing, FFTLogWorkspace} = nothing)
-    return _inverse_impl(A, f, workspace)
+function inverse(f::FFTLog, A::AbstractArray{<:Real}; workspace::Union{
+        Nothing, FFTLogWorkspace} = nothing)
+    return inverse(f, A, workspace)
 end
 
-function inverse(f::FFTLog, A::AbstractArray{<:Real}, workspace::Union{
-        Nothing, FFTLogWorkspace})
-    return _inverse_impl(A, f, workspace)
+function inverse(f::FFTLog, A::AbstractArray{<:Real}, ::Nothing)
+    workspace = FFTLogWorkspace(f, A)
+    return inverse(f, A, workspace)
 end
 
-function _forward_impl(a, f::FFTLog, workspace)
-    T = _real_eltype(f.coeffs)
-    _broadcast_sample_shape(f, a)
-    pl = f._bias_window_forward
-    blogc = _bias_logc(f.bias, f.kr, -1)
-
-    a_biased = Array{T}(undef, size(a))
-    a_biased .= a .* pl
-    A = _rfft(f, a_biased, workspace)
-    A = _multiply_coeffs(A, f.coeffs)
-    out = _irfft(f, A, workspace)
-    out_flipped = reverse(out; dims = 1)
-    out_flipped .*= pl
-    out_flipped .*= blogc
-    return out_flipped
+function inverse(f::FFTLog, A::AbstractArray{<:Real}, workspace::FFTLogWorkspace)
+    out_shape = _broadcast_sample_shape(f, A)
+    out = Array{_real_eltype(f.coeffs)}(undef, out_shape)
+    return inverse!(out, f, A, workspace)
 end
 
-function _inverse_impl(ak, f::FFTLog, workspace)
-    T = _real_eltype(f.coeffs)
-    _broadcast_sample_shape(f, ak)
+"""
+    inverse!(out, fftlog, A, workspace) -> out
+
+Mutating inverse FFTLog transform. Uses the pre-allocated buffers in `workspace`
+to perform the transform without allocations. `out` and `A` can alias.
+"""
+function inverse!(out::AbstractArray{<:Real}, f::FFTLog, ak::AbstractArray{<:Real}, workspace::FFTLogWorkspace)
+    path = _workspace_path(f, ak, workspace)
+    _check_workspace_output(out, workspace)
     pl_fwd = f._bias_window_forward
-    blogc = _bias_logc(f.bias, f.kr, 1)
-
-    ak_biased = Array{T}(undef, size(ak))
-    ak_biased .= ak ./ pl_fwd .* blogc
-    A = _rfft(f, ak_biased, workspace)
-    A = _divide_coeffs(A, f.coeffs)
-    out = _irfft(f, A, workspace)
-    out_flipped = reverse(out; dims = 1)
-    out_flipped ./= pl_fwd
-    return out_flipped
+    if path === :input
+        workspace.buf_real .= ak ./ pl_fwd .* workspace.buf_blogc_inv
+        mul!(workspace.buf_complex_in, workspace.input_rfft_plan, workspace.buf_real)
+        workspace.buf_complex_out .= workspace.buf_complex_in ./ conj.(f.coeffs)
+    else
+        workspace.buf_real_out .= ak ./ pl_fwd .* workspace.buf_blogc_inv
+        mul!(workspace.buf_complex_out, workspace.output_rfft_plan, workspace.buf_real_out)
+        workspace.buf_complex_out .= workspace.buf_complex_out ./ conj.(f.coeffs)
+    end
+    mul!(out, workspace.output_irfft_plan, workspace.buf_complex_out)
+    reverse!(out; dims = 1)
+    out .= out ./ pl_fwd
+    return out
 end

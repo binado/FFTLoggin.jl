@@ -56,17 +56,30 @@ end
     loggrid(fftlog::FFTLog; r=nothing, k=nothing) -> NamedTuple{(:r,:k)}
 
 Given one log-spaced coordinate array (`r` or `k`), return both arrays related
-by `y = exp(logc) ./ reverse(x)` where `logc = log(fftlog.kr)`.
+by `y = exp(logc) ./ reverse(x; dims=1)` where `logc = log(fftlog.kr)`.
+The first axis is the sample axis; all remaining axes broadcast with the batch
+axes of `fftlog.kr`.
 """
 function loggrid(f::FFTLog; r = nothing, k = nothing)
     (r === nothing) ⊻ (k === nothing) ||
         throw(ArgumentError("Provide exactly one of `r` or `k`."))
-    logc = log(f.kr isa AbstractArray ? first(f.kr) : f.kr)
+    logc = _loggrid_logc(f)
     if r !== nothing
-        kk = exp(logc) ./ reverse(r)
-        return (r = collect(r), k = collect(kk))
+        _check_loggrid_axis(f, r)
+        kk = exp.(logc) ./ reverse(r; dims = 1)
+        return (r = collect(broadcast((x, _) -> x, r, kk)), k = collect(kk))
     else
-        rr = exp(logc) ./ reverse(k)
-        return (r = collect(rr), k = collect(k))
+        _check_loggrid_axis(f, k)
+        rr = exp.(logc) ./ reverse(k; dims = 1)
+        return (r = collect(rr), k = collect(broadcast((x, _) -> x, k, rr)))
     end
 end
+
+function _check_loggrid_axis(f::FFTLog, x)
+    ndims(x) > 0 || throw(DimensionMismatch("grid input must have sample axis 1"))
+    size(x, 1) == f.n ||
+        throw(DimensionMismatch("first axis $(size(x, 1)) does not match FFTLog n=$(f.n)"))
+    return nothing
+end
+
+_loggrid_logc(f::FFTLog) = _batch_param_axis1(log.(f.kr))

@@ -6,10 +6,10 @@ using LinearAlgebra
 using SpecialFunctions: loggamma
 
 export AbstractKernel, BesselJKernel, SphericalBesselJKernel
-export ShiftedKernel, DerivativeKernel, TupleKernel
-export derive, shift, domain, convergence_strip, isindomain, mellin, optimal_logcenter
-export FFTLog, FFTLogWorkspace, forward, inverse
-export loggrid, infer_dlog, infer_logc
+export ShiftedKernel, DerivativeKernel
+export derive, shift, domain, convergence_strip
+export FFTLog, FFTLogWorkspace, forward, inverse, forward!, inverse!
+export loggrid, infer_dlog
 
 include("utils.jl")
 include("kernels.jl")

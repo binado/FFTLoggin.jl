@@ -52,6 +52,9 @@ end
     ws = FFTLogWorkspace(f, fr)
     ak_ws = forward(f, fr, ws)
     @test size(ak) == (n, 3)
+    @test size(ws.buf_real) == size(fr)
+    @test size(ws.buf_complex_in) == (n ÷ 2 + 1,)
+    @test size(ws.buf_complex_out) == (n ÷ 2 + 1, 3)
     @test ak_ws ≈ ak
     @test all(isfinite, ak)
 
@@ -71,6 +74,15 @@ end
     @test size(back) == (n, 3)
     @test isapprox(back, repeat(fr, 1, 3); rtol = 1e-7)
     @test isapprox(back_ws, repeat(fr, 1, 3); rtol = 1e-7)
+
+    fr_col = reshape(fr, n, 1)
+    ws_col = FFTLogWorkspace(f, fr_col)
+    @test size(ws_col.buf_real) == size(fr_col)
+    @test size(ws_col.buf_complex_in) == (n ÷ 2 + 1, 1)
+    @test size(ws_col.buf_complex_out) == (n ÷ 2 + 1, 3)
+    @test forward(f, fr_col; workspace = ws_col) ≈ ak
+    @test inverse(f, forward(f, fr_col; workspace = ws_col); workspace = ws_col) ≈
+          repeat(fr, 1, 3) rtol=1e-7
 end
 
 @testset "FFTLog batched kernel input broadcasting" begin

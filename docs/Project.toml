@@ -1,6 +1,7 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 FFTLoggin = "9b7e4f4a-1c2a-4f1e-9c2c-7c2b1a5e3a01"
+LiveServer = "16fef848-5104-11e9-1b77-fb7a48bbb589"
 
 [compat]
 Documenter = "1"

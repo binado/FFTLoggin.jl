@@ -21,6 +21,10 @@ docs:
     julia --project=docs -e 'using Pkg; Pkg.instantiate()'
     julia --project=docs docs/make.jl
 
+# Serve docs with live rebuild/reload using LiveServer.servedocs().
+servedocs:
+    julia --project=docs -e 'using LiveServer; servedocs()'
+
 # Format Julia sources under this repo (uses .JuliaFormatter.toml when present).
 fmt:
     julia -e 'using JuliaFormatter; format(".")'

@@ -1,5 +1,11 @@
 # FFTLoggin.jl
 
+```@raw html
+<p align="center">
+  <img src="assets/logo.svg" alt="FFTLoggin.jl Logo" width="600"/>
+</p>
+```
+
 `FFTLoggin.jl` provides FFTLog transforms and kernel abstractions for logarithmically
 sampled functions.
 

@@ -21,9 +21,6 @@ turns it into the two-point correlation function ``\xi(r)`` two different ways:
 2. With SymBoltz' built-in [`correlation_function`](https://hersle.github.io/SymBoltz.jl/stable/observables/#SymBoltz.correlation_function),
    which internally uses the FFTLog implementation in `TwoFAST.jl`.
 
-We then plot both curves and their relative residual with
-[CairoMakie](https://docs.makie.org/stable/explanations/backends/cairomakie).
-
 ## 1. Solve ΛCDM with SymBoltz
 
 ```@example xi
@@ -31,6 +28,7 @@ using SymBoltz, Unitful, UnitfulAstro
 using FFTLoggin
 using DataInterpolations
 using CairoMakie
+using LaTeXStrings
 
 CairoMakie.activate!(type = "png")
 
@@ -39,7 +37,7 @@ pars = parameters_Planck18(M)
 prob = CosmologyProblem(M, pars)
 
 ks_solve = 10 .^ range(-5, +3, length = 300) ./ u"Mpc"
-sol = solve(prob, ks_solve)
+sol = solve(prob, ks_solve; thread = false)
 nothing # hide
 ```
 
@@ -57,7 +55,17 @@ const N = 2048
 ks_unitful = 10 .^ range(-5, 3, length = N) ./ u"Mpc"
 ks = ustrip.(u"Mpc^-1", ks_unitful)
 Ps = ustrip.(u"Mpc^3", spectrum_matter(sol, ks_unitful))
-nothing # hide
+
+fig_pk = Figure(size = (480, 360))
+ax_pk = Axis(
+    fig_pk[1, 1];
+    xlabel = L"k\,[\mathrm{Mpc}^{-1}]",
+    ylabel = L"P(k)\,[\mathrm{Mpc}^3]",
+    xscale = log10,
+    yscale = log10,
+)
+lines!(ax_pk, ks, Ps)
+fig_pk
 ```
 
 ## 3. ``\xi(r)`` via FFTLoggin
@@ -69,6 +77,7 @@ kernel ``J_{1/2}``, which is the mathematical inverse Hankel transform that
 the formula needs.
 
 ```@example xi
+# lowring = true snaps kr to a value that reduces ringing in the transform
 f = FFTLog(BesselJKernel(0.5), ks; kr = 1.0, lowring = true)
 grid = loggrid(f; r = collect(ks))
 rs_ff = grid.k
@@ -78,12 +87,6 @@ ifht = forward(f, input)
 xi_ff = @. ifht / (2π * rs_ff)^(3 / 2)
 nothing # hide
 ```
-
-Notes:
-
-- The first axis is the transform axis for FFTLoggin (`AGENTS.md`).
-- `lowring = true` snaps `kr` to the value that suppresses ringing for the
-  ``J_{1/2}`` kernel.
 
 ## 4. ``\xi(r)`` via SymBoltz
 
@@ -113,13 +116,18 @@ mask_ff = (rs_ff .>= max(rmin, minimum(rs_sb_s))) .&
 mask_sb = (rs_sb_s .>= rmin) .& (rs_sb_s .<= rmax)
 xi_sb_on_ff = itp.(rs_ff[mask_ff])
 
+rel = abs.((xi_ff[mask_ff] .- xi_sb_on_ff) ./ xi_sb_on_ff)
+pos = rel .> 0
+r_res = rs_ff[mask_ff][pos]
+rel_pos = rel[pos]
+
 fig = Figure(size = (720, 560))
 
 ax1 = Axis(
     fig[1, 1];
-    xlabel = "r / Mpc",
-    ylabel = "r² ξ(r) / Mpc²",
-    title = "Matter correlation function",
+    xlabel = L"r\,[\mathrm{Mpc}]",
+    ylabel = L"r^2 \xi(r)\,[\mathrm{Mpc}^2]",
+    title = L"\mathrm{Matter\ correlation\ function}",
     limits = ((rmin, rmax), nothing),
 )
 lines!(ax1, rs_ff[mask_ff], (rs_ff[mask_ff] .^ 2) .* xi_ff[mask_ff]; label = "FFTLoggin")
@@ -130,26 +138,24 @@ lines!(
     label = "SymBoltz",
     linestyle = :dash,
 )
-axislegend(ax1; position = :lt)
+axislegend(ax1; position = :rt)
 
 ax2 = Axis(
     fig[2, 1];
-    xlabel = "r / Mpc",
-    ylabel = "(ξ_FFTLoggin − ξ_SymBoltz) / ξ_SymBoltz",
+    xlabel = L"r\,[\mathrm{Mpc}]",
+    ylabel = L"\left|(\xi_\mathrm{FFTLoggin} - \xi_\mathrm{SymBoltz}) / \xi_\mathrm{SymBoltz}\right|",
+    yscale = log10,
     limits = ((rmin, rmax), nothing),
 )
-lines!(
-    ax2,
-    rs_ff[mask_ff],
-    (xi_ff[mask_ff] .- xi_sb_on_ff) ./ xi_sb_on_ff,
-)
+lines!(ax2, r_res, rel_pos)
 
 linkxaxes!(ax1, ax2)
 rowsize!(fig.layout, 1, Relative(0.65))
 fig
 ```
 
-The two curves agree at the percent level across the relevant ``r`` range.
-Larger relative deviations are expected near the BAO zero-crossing
-(``r \approx 130\,\mathrm{Mpc}``), where ``\xi`` passes through zero and the
-relative residual diverges by definition.
+The two curves agree at the percent level across the relevant ``r`` range on the
+main panel. The residual panel uses a log scale on the absolute relative
+residual. Points where that residual is exactly zero are omitted, notably near
+the BAO zero-crossing (``r \approx 130\,\mathrm{Mpc}``), where ``\xi`` passes
+through zero and ``\log_{10}(0)`` is undefined.

@@ -7,6 +7,9 @@ makedocs(
     checkdocs = :none,
     pages = [
         "Home" => "index.md",
+        "Examples" => [
+            "Correlation function from P(k)" => "examples/correlation_function.md",
+        ],
         "API" => "api.md",
     ],
     format = Documenter.HTML(

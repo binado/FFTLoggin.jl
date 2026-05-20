@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Correlation function from P(k) · FFTLoggin.jl</title><meta name="title" content="Correlation function from P(k) · FFTLoggin.jl"/><meta property="og:title" content="Correlation function from P(k) · FFTLoggin.jl"/><meta property="twitter:title" content="Correlation function from P(k) · FFTLoggin.jl"/><meta name="description" content="Documentation for FFTLoggin.jl."/><meta property="og:description" content="Documentation for FFTLoggin.jl."/><meta property="twitter:description" content="Documentation for FFTLoggin.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img class="docs-light-only" src="../../assets/logo.svg" alt="FFTLoggin.jl logo"/><img class="docs-dark-only" src="../../assets/logo-dark.svg" alt="FFTLoggin.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">FFTLoggin.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Examples</span><ul><li class="is-active"><a class="tocitem" href>Correlation function from P(k)</a><ul class="internal"><li><a class="tocitem" href="#1.-Solve-ΛCDM-with-SymBoltz"><span>1. Solve ΛCDM with SymBoltz</span></a></li><li><a class="tocitem" href="#2.-Build-the-FFTLog-k-grid-and-evaluate-P(k)"><span>2. Build the FFTLog <span>$k$</span>-grid and evaluate <span>$P(k)$</span></span></a></li><li><a class="tocitem" href="#3.-\\xi(r)-via-FFTLoggin"><span>3. <span>$\xi(r)$</span> via FFTLoggin</span></a></li><li><a class="tocitem" href="#4.-\\xi(r)-via-SymBoltz"><span>4. <span>$\xi(r)$</span> via SymBoltz</span></a></li><li><a class="tocitem" href="#5.-Compare"><span>5. Compare</span></a></li></ul></li></ul></li><li><a class="tocitem" href="../../api/">API</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Correlation function from P(k)</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Correlation function from P(k)</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/binado/FFTLoggin.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Matter-correlation-function-from-P(k)"><a class="docs-heading-anchor" href="#Matter-correlation-function-from-P(k)">Matter correlation function from P(k)</a><a id="Matter-correlation-function-from-P(k)-1"></a><a class="docs-heading-anchor-permalink" href="#Matter-correlation-function-from-P(k)" title="Permalink"></a></h1><p>This example uses <a href="https://hersle.github.io/SymBoltz.jl/stable/">SymBoltz.jl</a> to compute the linear matter power spectrum <span>$P(k)$</span> for a ΛCDM cosmology, then turns it into the two-point correlation function <span>$\xi(r)$</span> two different ways:</p><ol><li><p>With FFTLoggin, using the identity</p><p class="math-container">\[\xi(r) \;=\; \frac{1}{(2\pi r)^{3/2}} \,
+\mathrm{IFHT}\!\left[k^{3/2} P(k); \, \mu = \tfrac{1}{2}\right](r),\]</p><p>which follows from <span>$j_0(x) = \sqrt{\pi/(2x)}\,J_{1/2}(x)$</span> applied to the usual</p><p class="math-container">\[\xi(r) \;=\; \frac{1}{2\pi^2}\int_0^\infty k^2 \, P(k) \, j_0(kr) \, \mathrm{d}k.\]</p></li><li><p>With SymBoltz&#39; built-in <a href="https://hersle.github.io/SymBoltz.jl/stable/observables/#SymBoltz.correlation_function"><code>correlation_function</code></a>, which internally uses the FFTLog implementation in <code>TwoFAST.jl</code>.</p></li></ol><h2 id="1.-Solve-ΛCDM-with-SymBoltz"><a class="docs-heading-anchor" href="#1.-Solve-ΛCDM-with-SymBoltz">1. Solve ΛCDM with SymBoltz</a><a id="1.-Solve-ΛCDM-with-SymBoltz-1"></a><a class="docs-heading-anchor-permalink" href="#1.-Solve-ΛCDM-with-SymBoltz" title="Permalink"></a></h2><pre><code class="language-julia hljs">using SymBoltz, Unitful, UnitfulAstro
+using FFTLoggin
+using DataInterpolations
+using CairoMakie
+using LaTeXStrings
+
+CairoMakie.activate!(type = &quot;png&quot;)
+
+M = ΛCDM()
+pars = parameters_Planck18(M)
+prob = CosmologyProblem(M, pars)
+
+ks_solve = 10 .^ range(-5, +3, length = 300) ./ u&quot;Mpc&quot;
+sol = solve(prob, ks_solve; thread = false)</code></pre><p>The wide <span>$k$</span> range matches the SymBoltz <code>correlation_function</code> example so that the spline <span>$P(k)$</span> is well-resolved across the band needed by FFTLog.</p><h2 id="2.-Build-the-FFTLog-k-grid-and-evaluate-P(k)"><a class="docs-heading-anchor" href="#2.-Build-the-FFTLog-k-grid-and-evaluate-P(k)">2. Build the FFTLog <span>$k$</span>-grid and evaluate <span>$P(k)$</span></a><a id="2.-Build-the-FFTLog-k-grid-and-evaluate-P(k)-1"></a><a class="docs-heading-anchor-permalink" href="#2.-Build-the-FFTLog-k-grid-and-evaluate-P(k)" title="Permalink"></a></h2><p>We use <span>$N = 2048$</span> log-spaced points, matching SymBoltz&#39; default for <code>correlation_function</code>. The <code>spectrum_matter(sol, ks)</code> overload interpolates between the wavenumbers stored in <code>sol</code>, so this just resamples the spline.</p><pre><code class="language-julia hljs">const N = 2048
+ks_unitful = 10 .^ range(-5, 3, length = N) ./ u&quot;Mpc&quot;
+ks = ustrip.(u&quot;Mpc^-1&quot;, ks_unitful)
+Ps = ustrip.(u&quot;Mpc^3&quot;, spectrum_matter(sol, ks_unitful))
+
+fig_pk = Figure(size = (480, 360))
+ax_pk = Axis(
+    fig_pk[1, 1];
+    xlabel = L&quot;k\,[\mathrm{Mpc}^{-1}]&quot;,
+    ylabel = L&quot;P(k)\,[\mathrm{Mpc}^3]&quot;,
+    xscale = log10,
+    yscale = log10,
+)
+lines!(ax_pk, ks, Ps)
+fig_pk</code></pre><img src="c057ce55.png" alt="Example block output"/><h2 id="3.-\\xi(r)-via-FFTLoggin"><a class="docs-heading-anchor" href="#3.-\\xi(r)-via-FFTLoggin">3. <span>$\xi(r)$</span> via FFTLoggin</a><a id="3.-\\xi(r)-via-FFTLoggin-1"></a><a class="docs-heading-anchor-permalink" href="#3.-\\xi(r)-via-FFTLoggin" title="Permalink"></a></h2><p><code>FFTLog(kernel, x)</code> treats <code>x</code> as the input (sample) axis. We feed our <span>$k$</span>-array in that role; the conjugate axis returned by <code>loggrid</code> then plays the role of the real-space <span>$r$</span> grid. <code>forward</code> is the Hankel transform with kernel <span>$J_{1/2}$</span>, which is the mathematical inverse Hankel transform that the formula needs.</p><pre><code class="language-julia hljs"># lowring = true snaps kr to a value that reduces ringing in the transform
+f = FFTLog(BesselJKernel(0.5), ks; kr = 1.0, lowring = true)
+grid = loggrid(f; r = collect(ks))
+rs_ff = grid.k
+
+input = @. ks^(3 / 2) * Ps
+ifht = forward(f, input)
+xi_ff = @. ifht / (2π * rs_ff)^(3 / 2)</code></pre><h2 id="4.-\\xi(r)-via-SymBoltz"><a class="docs-heading-anchor" href="#4.-\\xi(r)-via-SymBoltz">4. <span>$\xi(r)$</span> via SymBoltz</a><a id="4.-\\xi(r)-via-SymBoltz-1"></a><a class="docs-heading-anchor-permalink" href="#4.-\\xi(r)-via-SymBoltz" title="Permalink"></a></h2><pre><code class="language-julia hljs">rs_sb_raw, xi_sb = correlation_function(sol)
+h = sol.bg.ps[:h]
+rs_sb = ustrip.(u&quot;Mpc&quot;, rs_sb_raw ./ (SymBoltz.k0 * h) .* u&quot;Mpc&quot;)</code></pre><p>The unit conversion of <code>rs_sb_raw</code> follows the snippet in the SymBoltz docs.</p><h2 id="5.-Compare"><a class="docs-heading-anchor" href="#5.-Compare">5. Compare</a><a id="5.-Compare-1"></a><a class="docs-heading-anchor-permalink" href="#5.-Compare" title="Permalink"></a></h2><p>We compare on the BAO-relevant interval <span>$r \in [1, 250]\,\mathrm{Mpc}$</span>. The SymBoltz curve is interpolated onto the FFTLoggin <span>$r$</span>-grid for the residual panel.</p><pre><code class="language-julia hljs">perm = sortperm(rs_sb)
+rs_sb_s, xi_sb_s = rs_sb[perm], xi_sb[perm]
+itp = DataInterpolations.LinearInterpolation(xi_sb_s, rs_sb_s)
+
+rmin, rmax = 1.0, 250.0
+mask_ff = (rs_ff .&gt;= max(rmin, minimum(rs_sb_s))) .&amp;
+          (rs_ff .&lt;= min(rmax, maximum(rs_sb_s)))
+mask_sb = (rs_sb_s .&gt;= rmin) .&amp; (rs_sb_s .&lt;= rmax)
+xi_sb_on_ff = itp.(rs_ff[mask_ff])
+
+rel = abs.((xi_ff[mask_ff] .- xi_sb_on_ff) ./ xi_sb_on_ff)
+pos = rel .&gt; 0
+r_res = rs_ff[mask_ff][pos]
+rel_pos = rel[pos]
+
+fig = Figure(size = (720, 560))
+
+ax1 = Axis(
+    fig[1, 1];
+    xlabel = L&quot;r\,[\mathrm{Mpc}]&quot;,
+    ylabel = L&quot;r^2 \xi(r)\,[\mathrm{Mpc}^2]&quot;,
+    title = L&quot;\mathrm{Matter\ correlation\ function}&quot;,
+    limits = ((rmin, rmax), nothing),
+)
+lines!(ax1, rs_ff[mask_ff], (rs_ff[mask_ff] .^ 2) .* xi_ff[mask_ff]; label = &quot;FFTLoggin&quot;)
+lines!(
+    ax1,
+    rs_sb_s[mask_sb],
+    (rs_sb_s[mask_sb] .^ 2) .* xi_sb_s[mask_sb];
+    label = &quot;SymBoltz&quot;,
+    linestyle = :dash,
+)
+axislegend(ax1; position = :rt)
+
+ax2 = Axis(
+    fig[2, 1];
+    xlabel = L&quot;r\,[\mathrm{Mpc}]&quot;,
+    ylabel = L&quot;\left|(\xi_\mathrm{FFTLoggin} - \xi_\mathrm{SymBoltz}) / \xi_\mathrm{SymBoltz}\right|&quot;,
+    yscale = log10,
+    limits = ((rmin, rmax), nothing),
+)
+lines!(ax2, r_res, rel_pos)
+
+linkxaxes!(ax1, ax2)
+rowsize!(fig.layout, 1, Relative(0.65))
+fig</code></pre><img src="56d5bc6e.png" alt="Example block output"/><p>The two curves agree at the percent level across the relevant <span>$r$</span> range on the main panel. The residual panel uses a log scale on the absolute relative residual. Points where that residual is exactly zero are omitted, notably near the BAO zero-crossing (<span>$r \approx 130\,\mathrm{Mpc}$</span>), where <span>$\xi$</span> passes through zero and <span>$\log_{10}(0)$</span> is undefined.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../">« Home</a><a class="docs-footer-nextpage" href="../../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Wednesday 20 May 2026 14:12">Wednesday 20 May 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

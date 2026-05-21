@@ -1,7 +1,7 @@
 name = "FFTLoggin"
 uuid = "9b7e4f4a-1c2a-4f1e-9c2c-7c2b1a5e3a01"
-authors = ["fftloggin contributors"]
-version = "0.1.0-DEV"
+authors = ["Bernardo Veronese <bernardopveronese@gmail.com>"]
+version = "0.1.0"
 
 [deps]
 AbstractFFTs = "621f4979-c628-5d54-868e-fcf4e3e8185c"

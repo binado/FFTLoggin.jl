@@ -15,12 +15,18 @@ package — a vectorized FFTLog implementation for fast Hankel transforms.
 
 ## Installation
 
-This package lives under `julia/` in the parent `fftloggin` repository (Phase 1).
-From the repository root:
+Until the package is registered, install it from the package subdirectory:
 
 ```julia
 using Pkg
-Pkg.activate("julia")
+Pkg.add(url="https://github.com/binado/FFTLoggin.jl", subdir="FFTLoggin")
+```
+
+For local development from the repository root:
+
+```julia
+using Pkg
+Pkg.activate("FFTLoggin")
 Pkg.instantiate()
 ```
 
@@ -101,6 +107,3 @@ Advanced helper functions are available with qualified names, for example
 - `forward`/`inverse` for `Vector` and column-batched `Matrix`
 - `loggrid`, `infer_dlog`
 - Fortran-reference benchmark agreement (216 cases at `rtol = 1e-5`)
-
-See `JULIA_PLAN.md` in the repo root for the full design document and the
-Phase 2/3 roadmap.
